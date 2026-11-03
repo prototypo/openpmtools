@@ -7,6 +7,13 @@ and follow its changes live, and projects that exist only in OpenPMTools ("My Pr
 Drag a project from My Projects onto FrequentFinder's All Projects window to make it a FrequentFinder project; its
 board stays with it. The `pmt` command does everything the app does to boards and tasks.
 
+## Working with FrequentFinder
+
+FrequentFinder's active projects show up in the sidebar under their own section, with their boards, and renames follow live.
+To add one, drag a project from My Projects onto the sidebar of FrequentFinder's All Projects window; its board goes with it.
+This needs FrequentFinder on its `main` branch (projects there have ids, which boards are matched by).
+<!-- screenshot: docs/images/board.png -->
+
 ## Build and install
 
 Needs macOS 15 or later, Xcode (or the Swift toolchain), and the FrequentFinder repo checked out next to this one
