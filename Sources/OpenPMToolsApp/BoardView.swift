@@ -48,12 +48,16 @@ struct BoardView: View {
 
 /// The Dock's puff of smoke. NSAnimationEffect is deprecated (macOS 14) but still works and has no
 /// replacement that animates at a point; calling it through a protocol keeps the build free of warnings.
+/// Its length is fixed by the system. It waits a moment so the drag image is gone first, and plays
+/// larger than the default so it is easy to see.
 // ponytail: if Apple removes NSAnimationEffect, drop the poof and keep the archive.
 private protocol PoofShowing { func show(at point: NSPoint) }
 private struct Poof: PoofShowing {
     @available(macOS, deprecated: 14)
     func show(at point: NSPoint) {
-        NSAnimationEffect.disappearingItemDefault.show(centeredAt: point, size: NSSize(width: 64, height: 64))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            NSAnimationEffect.disappearingItemDefault.show(centeredAt: point, size: NSSize(width: 96, height: 96))
+        }
     }
 }
 

@@ -1,3 +1,4 @@
+import AppKit
 import PMTCore
 import SwiftUI
 
@@ -68,13 +69,14 @@ struct ContentView: View {
         .onChange(of: model.focusSearch) {
             if model.focusSearch { searchFocused = true; model.focusSearch = false }
         }
-        .toolbar {
-            ToolbarItem {
-                Toggle(isOn: $model.includeDone) { Label("Include Done", systemImage: "archivebox") }
-                    .help("Include Done")
-            }
+        // A scope bar (HIG: search scopes) shows the choice as labelled segments under the toolbar while searching.
+        .searchScopes($model.includeDone) {
+            Text("Open Tasks").tag(false)
+            Text("Include Done").tag(true)
         }
         .frame(minWidth: 760, minHeight: 480)
+        // Saves and restores the window's size and place across runs.
+        .background(WindowReader { $0.setFrameAutosaveName("Main") })
         .onAppear { model.selection = storedSelection.flatMap(UUID.init(uuidString:)) }
         .onChange(of: model.selection) {
             storedSelection = model.selection?.uuidString
@@ -83,6 +85,33 @@ struct ContentView: View {
                 model.offSidebar = nil
                 if model.highlight?.project != s { model.highlight = nil }
             }
+        }
+    }
+}
+
+/// Calls `onWindow` once with the NSWindow that hosts this view. Copied from FrequentFinder.
+private struct WindowReader: NSViewRepresentable {
+    let onWindow: (NSWindow) -> Void
+
+    func makeNSView(context: Context) -> NSView { ReaderView(onWindow: onWindow) }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    final class ReaderView: NSView {
+        let onWindow: (NSWindow) -> Void
+        private weak var seen: NSWindow?
+
+        init(onWindow: @escaping (NSWindow) -> Void) {
+            self.onWindow = onWindow
+            super.init(frame: .zero)
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window, window !== seen else { return }
+            seen = window
+            onWindow(window)
         }
     }
 }
