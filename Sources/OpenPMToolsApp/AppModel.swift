@@ -60,6 +60,8 @@ final class AppModel {
 
     /// Applies a change to the latest file contents, saves it, and only then shows it.
     /// Does nothing while boards.json is broken. Returns true on success.
+    // ponytail: no undo (⌘Z). Restoring an old copy of the whole file would overwrite pmt's edits made since;
+    // Restore in search brings back a done card. Add per-op inverse actions on UndoManager if undo is wanted.
     @discardableResult
     func update(_ change: (inout BoardsFile) throws -> Void) -> Bool {
         guard loadError == nil else { return false }

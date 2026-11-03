@@ -82,8 +82,8 @@ struct Sidebar: View {
     }
 }
 
-/// Asks for a project name. `save` returns false on failure; the error then shows here.
-private struct NameSheet: View {
+/// Asks for a name (project or column). `save` returns false on failure; the error then shows here.
+struct NameSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let title: String
