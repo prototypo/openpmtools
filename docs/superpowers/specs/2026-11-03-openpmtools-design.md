@@ -77,16 +77,23 @@ projects and their files. The two apps work together, but each also works alone.
 
 ```
 boards.json
-  ownProjects: [ { name } ]
+  ownProjects: [ { id: <UUID>, name } ]
   boards: [
-    { project: <name>,
+    { project: <project UUID>,
       columns: [ { name, tasks: [ { id, title, notes?, created } ] } ],   // last column always has no tasks
       archive: [ { id, title, notes?, created, done, fromColumn } ] }
   ]
 ```
 
-- A board belongs to a project **by name**, matched without regard to case, like FrequentFinder's
-  `Config.index(of:)`.
+- **Every project has a UUID (decided by David).** A board belongs to a project **by UUID**, so renaming a project
+  in either app never disconnects its board.
+  - FrequentFinder projects get a new `id: UUID` field in `projects.json`. A project with no `id` (every existing
+    one today) gets a new UUID when loaded, and `ConfigStore.load` saves the file once if it had to add any, so
+    the ids are stable from then on. This must not change anything else in the file.
+  - Own projects get a UUID when created.
+- People still type **names** in `pmt` and see names in the app. A name is resolved to a UUID without regard to
+  case, like FrequentFinder's `Config.index(of:)`. Two projects with the same name (one in each app) are handled
+  under "Project list rules".
 - Task `id` is stable and short enough to type in `pmt` (for example the first 6 hex digits of a UUID, longer if
   there is a clash). The builder chooses the exact form.
 - Archived tasks stay in their board's `archive`. Deleting a board deletes its archive too (CLI asks for `--force`
@@ -98,11 +105,14 @@ boards.json
   projects).
 - Inactive FrequentFinder projects are hidden, as in FrequentFinder. Their boards are kept.
 - FrequentFinder projects show their git status symbol, like FrequentFinder's sidebar.
-- If a name exists in both FrequentFinder and own projects, it shows once, under FrequentFinder. The own-project
+- If a UUID exists in both FrequentFinder and own projects, it shows once, under FrequentFinder. The own-project
   entry is removed on the next save. This is what makes drag-to-add "move" the project.
-- A board whose project no longer exists anywhere (for example, a FrequentFinder project was renamed) is not lost.
-  `pmt board list` shows it as orphaned, and `pmt board rename <old> <new>` reconnects it. The app does not need a
-  UI for this in the first version.
+- Names must be unique across both lists. Creating an own project with a name FrequentFinder already uses is
+  refused. If FrequentFinder later gains a project with the same name as an own project (different UUID), both
+  show, and `pmt` asks the user to rename one before it accepts that name.
+- A board whose project no longer exists anywhere (for example, a FrequentFinder project was removed) is not lost.
+  `pmt board list` shows it as orphaned, and `pmt board attach <board-project-id> <project-name>` connects it to
+  another project. The app does not need a UI for this in the first version.
 
 ## Reusing FrequentFinder code (Claude's call)
 
@@ -110,6 +120,8 @@ OpenPMTools needs to read FrequentFinder's config and get git status. FrequentFi
 (`Config`, `ConfigStore`, `Git`, `GitStatus.combine`). Reuse it instead of copying it:
 
 - In FrequentFinder, add a library product for `FFCore` in its `Package.swift`.
+- In FrequentFinder, add the project `id` (see "Data"). Its `ff list --json` shows it. `ff add` creates one, and
+  accepts `--id <UUID>` so a project can be added with a known id (used by drag-to-add).
 - OpenPMTools depends on it by local path: `.package(path: "../frequent-finder")`.
 - `GitSymbol` (status to SF Symbol and colour) is private app code in FrequentFinder's `MenuContent.swift`. Do not
   move it. Copy its ~20 lines into OpenPMTools' app target. Keep FrequentFinder's change small.
@@ -172,12 +184,14 @@ FrequentFinder (`scripts/make-app.sh --install`) so drag-to-add works.
 ## Drag to FrequentFinder
 
 - In OpenPMTools, an own project row in the sidebar can be dragged.
-- The drag carries the project name (plain text is enough; the builder may add a custom type).
-- **FrequentFinder change:** its All Projects window sidebar accepts the drop and adds a project with that name
-  and no folder, through `ConfigStore.update`. If the name already exists, nothing changes. This is a small change
-  in the FrequentFinder repo, done on a branch there.
+- The drag carries the project's UUID and name, as a small custom type (for example JSON under a
+  `org.hyland-wood.openpmtools.project` type). Plain text of the name may be added too, for other drop targets.
+- **FrequentFinder change:** its All Projects window sidebar accepts the drop and adds a project with that UUID,
+  that name, and no folder, through `ConfigStore.update`. If the UUID already exists, nothing changes. If only the
+  name already exists, the drop is refused with a clear message. This is done on a branch in the FrequentFinder
+  repo.
 - After the drop, OpenPMTools sees FrequentFinder's file change, shows the project under FrequentFinder, and drops
-  the own-project entry. The board stays, because it is matched by name.
+  the own-project entry. The board stays, because it is matched by UUID.
 
 ## The `pmt` command
 
@@ -188,13 +202,13 @@ exit on error. Suggested commands (builder can adjust names, but not drop abilit
 pmt projects [--json]                         list all projects (FrequentFinder and own), with board yes/no
 pmt project add <name>                         add an own project
 pmt project remove <name>                      remove an own project (its board too, needs --force if it has tasks)
-pmt project rename <name> <new>                rename an own project and its board
+pmt project rename <name> <new>                rename an own project (FrequentFinder projects: use ff rename)
 
 pmt board <project> [--json]                   show the board: columns and tasks with ids
 pmt board create <project> <col> <col>...     create a board; the last column is Done
 pmt board delete <project> [--force]
-pmt board list [--json]                        all boards, marking orphaned ones
-pmt board rename <old-project> <new-project>   reconnect a board to another project name
+pmt board list [--json]                        all boards with project id, marking orphaned ones
+pmt board attach <project-id> <project-name>   connect an orphaned board to another project
 
 pmt column add <project> <name> [--at N]
 pmt column rename <project> <name> <new>
@@ -217,6 +231,8 @@ pmt search <text> [--done] [--json]
 - Core logic in `PMTCore` has unit tests, like FrequentFinder's `FFCoreTests`: store load/save/update, board and
   task operations (including "move to last column archives"), restore, search, project-list merging with
   FrequentFinder, and CLI parsing.
+- FrequentFinder gets tests for the new `id`: an old file without ids loads, gets ids, is saved once, and keeps
+  the same ids on the next load; nothing else in the file changes.
 - Tests use temp files via `PMT_CONFIG` / `FF_CONFIG`, never the real ones.
 - The UI is checked by running the app.
 
