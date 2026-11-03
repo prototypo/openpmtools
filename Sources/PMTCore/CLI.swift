@@ -45,6 +45,7 @@ public enum PMTCLI {
         }
         guard let command = args.first else { throw PMTError.usage(usage) }
         if ["help", "--help", "-h"].contains(command) { return usage }
+        if args.contains(where: { $0.hasPrefix("--") }) { throw PMTError.usage(usage) }
         let a = Array(args.dropFirst())
         let ff = Catalog.loadFrequentFinder(ffStore).config
 
@@ -218,7 +219,7 @@ public enum PMTCLI {
 
     private static func takeOption(_ flag: String, from args: inout [String]) throws -> String? {
         guard let i = args.firstIndex(of: flag) else { return nil }
-        guard i + 1 < args.count else { throw PMTError.usage(usage) }
+        guard i + 1 < args.count, !args[i + 1].hasPrefix("--") else { throw PMTError.usage(usage) }
         let value = args[i + 1]
         args.removeSubrange(i...i + 1)
         return value

@@ -90,4 +90,59 @@ struct CLITests {
         try pmt("task", "delete", id)
         #expect(throws: PMTError.self) { try pmt("task", "show", id) }
     }
+
+    @Test func cliOptionsDoNotSwallowOrAcceptUnknown() throws {
+        try pmt("project", "add", "P")
+        try pmt("board", "create", "P", "A", "Done")
+        #expect(throws: PMTError.self) { try pmt("task", "add", "P", "title", "--notes", "--title", "x") }
+        #expect(throws: PMTError.self) { try pmt("task", "add", "P", "title", "--bogus") }
+        #expect(try pmt("board", "P") == "A\nDone (done)")
+    }
+
+    @Test func cliOwnProjectRemoveAndRename() throws {
+        try pmt("project", "add", "P")
+        try pmt("project", "rename", "p", "Q")
+        #expect(try pmt("projects") == "Q\town\tno board")
+        try pmt("project", "remove", "Q")
+        #expect(try pmt("projects") == "No projects. Add one with: pmt project add <name>")
+
+        try pmt("project", "add", "R")
+        try pmt("board", "create", "R", "A", "Done")
+        try pmt("task", "add", "R", "t")
+        #expect(throws: PMTError.boardHasTasks) { try pmt("project", "remove", "R") }
+        try pmt("project", "remove", "R", "--force")
+        #expect(try pmt("projects").hasPrefix("No projects"))
+        #expect(try pmt("board", "list") == "")
+    }
+
+    @Test func cliFrequentFinderRedirect() throws {
+        try ffStore.save(Config(projects: [Project(name: "ffp", path: nil)]))
+        for (sub, args) in [("remove", ["project", "remove", "ffp"]), ("rename", ["project", "rename", "ffp", "x"])] {
+            do { _ = try PMTCLI.run(args, store: store, ffStore: ffStore); Issue.record("no error") }
+            catch let PMTError.usage(text) { #expect(text.contains("ff \(sub)")) }
+        }
+    }
+
+    @Test func cliColumnRenameRemoveAndTaskColumns() throws {
+        try pmt("project", "add", "P")
+        try pmt("board", "create", "P", "A", "B", "C", "Done")
+        try pmt("column", "rename", "P", "b", "Bee")
+        try pmt("column", "remove", "P", "A")
+        #expect(try pmt("board", "P") == "Bee\nC\nDone (done)")
+        let id = try pmt("task", "add", "P", "t", "--column", "C")
+        #expect(try pmt("board", "P") == "Bee\nC\n  \(id)  t\nDone (done)")
+        #expect(try pmt("task", "move", id, "Bee") == "")
+        #expect(try pmt("board", "P") == "Bee\n  \(id)  t\nC\nDone (done)")
+        #expect(throws: PMTError.columnNotEmpty("Bee")) { try pmt("column", "remove", "P", "Bee") }
+    }
+
+    @Test func cliInactiveAndBrokenFrequentFinder() throws {
+        var off = Project(name: "old", path: nil); off.active = false
+        try ffStore.save(Config(projects: [off]))
+        #expect(try pmt("projects") == "old\tFrequentFinder\tno board\t(inactive)")
+        try Data("{ not json".utf8).write(to: ffStore.url)
+        try pmt("project", "add", "Own")
+        #expect(try pmt("projects") == "Own\town\tno board")
+        #expect(try String(contentsOf: ffStore.url, encoding: .utf8) == "{ not json")
+    }
 }
