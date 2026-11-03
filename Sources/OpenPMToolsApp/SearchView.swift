@@ -36,8 +36,10 @@ struct SearchView: View {
             .sheet(isPresented: Binding(get: { showing != nil }, set: { if !$0 { showing = nil } })) {
                 if let card = showing, let project = showingProject {
                     DoneCardView(card: card) {
+                        guard model.update({ try $0.restoreCard(card.id) }) else { return false }
                         showing = nil
-                        if model.update({ try $0.restoreCard(card.id) }) { model.show(card.id, in: project) }
+                        model.show(card.id, in: project)
+                        return true
                     }
                 }
             }
@@ -45,11 +47,13 @@ struct SearchView: View {
     }
 }
 
-/// A done card, read-only, with Restore.
+/// A done card, read-only, with Restore. `restore` returns false on failure; the error then shows here.
 private struct DoneCardView: View {
+    @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let card: ArchivedCard
-    let restore: () -> Void
+    let restore: () -> Bool
+    @State private var failure: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -59,10 +63,19 @@ private struct DoneCardView: View {
             }
             Text("Done \(card.done.formatted(date: .abbreviated, time: .shortened))").foregroundStyle(.secondary)
             Text("From \(card.fromColumn)").foregroundStyle(.secondary)
+            if let failure {
+                Text(failure).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+            }
             HStack {
                 Spacer()
                 Button("Close", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Restore", action: restore).keyboardShortcut(.defaultAction)
+                Button("Restore") {
+                    if !restore() {
+                        failure = model.loadError ?? model.error
+                        model.error = nil  // shown here, not also in the sidebar
+                    }
+                }
+                .keyboardShortcut(.defaultAction)
             }
         }
         .padding(20)
