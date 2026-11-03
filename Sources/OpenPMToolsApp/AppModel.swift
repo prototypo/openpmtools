@@ -23,6 +23,15 @@ final class AppModel {
     var selection: UUID?
     /// Set by File > New Project…; the sidebar shows its name sheet.
     var addingProject = false
+    /// The toolbar search text. While not empty, the detail area shows the results.
+    var search = ""
+    /// Set by Edit > Find > Find…; the window then focuses the search field.
+    var focusSearch = false
+    var includeDone = false
+    /// A board shown from search whose project has no sidebar row (inactive or orphaned).
+    var offSidebar: UUID?
+    /// A card for the shown board to scroll to and flash.
+    var highlight: (project: UUID, card: String)?
     @ObservationIgnored private var watchers: [DispatchSourceFileSystemObject] = []
     @ObservationIgnored private var timer: Timer?
 
@@ -76,6 +85,19 @@ final class AppModel {
             self.error = "\(error)"
         }
         return false
+    }
+
+    /// Shows a card's board with the card highlighted, selecting its sidebar row if it has one.
+    func show(_ card: String, in project: UUID) {
+        search = ""
+        highlight = (project, card)
+        if let entry = catalog.entry(for: project), entry.isActive {
+            offSidebar = nil
+            selection = project
+        } else {
+            selection = nil
+            offSidebar = project
+        }
     }
 
     func refreshAllGit() {

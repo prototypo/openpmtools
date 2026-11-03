@@ -7,6 +7,7 @@ public struct ProjectEntry: Hashable, Identifiable, Sendable {
     /// nil means an own project.
     public var ff: FFCore.Project?
     public var isActive: Bool { ff?.active ?? true }
+    public init(id: UUID, name: String, ff: FFCore.Project?) { self.id = id; self.name = name; self.ff = ff }
 }
 
 public struct Catalog: Sendable {
