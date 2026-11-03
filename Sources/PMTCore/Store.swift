@@ -39,7 +39,7 @@ public struct BoardsStore: Sendable {
         var file = try load()
         let before = file
         try change(&file)
-        pruneOwnProjects(ff: ff, in: &file)
+        file.pruneOwnProjects(ff: ff)
         if file != before { try save(file) }
         return file
     }
