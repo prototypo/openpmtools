@@ -34,6 +34,25 @@ struct CLITests {
         #expect(throws: PMTError.self) { try pmt("project", "remove", "openpmtools") }
     }
 
+    @Test func cliAmbiguousNameCanBeRenamed() throws {
+        try store.save(BoardsFile(ownProjects: [OwnProject(name: "Book")], boards: []))
+        try ffStore.save(Config(projects: [Project(name: "Book", path: nil)]))
+        do { _ = try pmt("board", "Book"); Issue.record("expected ambiguity") }
+        catch {
+            let m = "\(error)"
+            #expect(m.contains("pmt project rename Book <new>") && m.contains("ff rename Book <new>"))
+        }
+        try pmt("project", "rename", "Book", "Novel")
+        #expect(throws: PMTError.noBoard) { try pmt("board", "Novel") }
+        #expect(try pmt("projects").contains("Novel\town\tno board"))
+        #expect(try pmt("projects").contains("Book\tFrequentFinder"))
+    }
+
+    @Test func badConfigMessageHasOnePeriod() {
+        #expect("\(PMTError.badConfig("/x/boards.json: bad data."))" == "Cannot read /x/boards.json: bad data. Fix the file; it was not changed.")
+        #expect("\(PMTError.badConfig("/x/boards.json: bad data"))" == "Cannot read /x/boards.json: bad data. Fix the file; it was not changed.")
+    }
+
     @Test func cliBoardAttach() throws {
         let gone = UUID()
         var f = BoardsFile(); try f.createBoard(project: gone, columns: ["A", "Done"]); try store.save(f)

@@ -22,11 +22,11 @@ public enum PMTError: Error, Equatable, CustomStringConvertible, LocalizedError 
     public var description: String {
         switch self {
         case .usage(let text): text
-        case .badConfig(let detail): "Cannot read \(detail). Fix or delete it; it was not changed."
+        case .badConfig(let detail): "Cannot read \(detail.hasSuffix(".") ? detail : detail + ".") Fix the file; it was not changed."
         case .noSuchProject(let name): "No project named '\(name)'."
         case .duplicateName(let name): "A project named '\(name)' already exists."
         case .emptyName: "Project name cannot be empty."
-        case .ambiguousName(let name): "More than one project is named '\(name)'."
+        case .ambiguousName(let name): "More than one project is named '\(name)'. Rename one: pmt project rename \(name) <new> (OpenPMTools) or ff rename \(name) <new> (FrequentFinder)."
         case .noBoard: "That project has no board."
         case .boardExists: "That project already has a board."
         case .boardHasTasks: "The board still has tasks; move or remove them first."

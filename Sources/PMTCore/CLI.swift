@@ -91,8 +91,13 @@ public enum PMTCLI {
             case "remove", "rename":
                 guard r.count == (sub == "remove" ? 1 : 2) else { throw PMTError.usage(usage) }
                 return try edit { f, c in
-                    let p = try c.resolve(r[0])
-                    if p.ff != nil { throw PMTError.usage("'\(p.name)' belongs to FrequentFinder; use 'ff \(sub)' instead.") }
+                    let p: ProjectEntry
+                    do { p = try c.resolve(r[0], ownOnly: true) }
+                    catch PMTError.noSuchProject {
+                        // not an own project: say so if FrequentFinder has it
+                        let q = try c.resolve(r[0])
+                        throw PMTError.usage("'\(q.name)' belongs to FrequentFinder; use 'ff \(sub)' instead.")
+                    }
                     if sub == "remove" { try f.removeOwnProject(p.id, force: force) }
                     else { try f.renameOwnProject(p.id, to: r[1], ff: ff) }
                     return ""

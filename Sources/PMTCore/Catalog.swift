@@ -31,9 +31,10 @@ public struct Catalog: Sendable {
 
     public func entry(for id: UUID) -> ProjectEntry? { all.first { $0.id == id } }
 
-    public func resolve(_ name: String) throws -> ProjectEntry {
+    /// `ownOnly` skips FrequentFinder projects, so rename/remove still work when a name is shared.
+    public func resolve(_ name: String, ownOnly: Bool = false) throws -> ProjectEntry {
         let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let hits = all.filter { $0.name.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(n) == .orderedSame }
+        let hits = (ownOnly ? ownProjects : all).filter { $0.name.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(n) == .orderedSame }
         guard let first = hits.first else { throw PMTError.noSuchProject(n) }
         if hits.count > 1 { throw PMTError.ambiguousName(n) }
         return first

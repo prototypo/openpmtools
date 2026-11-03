@@ -38,7 +38,13 @@ struct ContentView: View {
         NavigationSplitView {
             Sidebar()
         } detail: {
-            if !model.search.isEmpty {
+            if let message = model.loadError {
+                ContentUnavailableView {
+                    Label("Cannot read boards.json", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text("\(message)\n\nThe file was not changed. Edits are paused until it is fixed.")
+                }
+            } else if !model.search.isEmpty {
                 SearchView().navigationTitle("Search")
             } else if let id = model.selection ?? model.offSidebar,
                       let entry = model.catalog.entry(for: id)
