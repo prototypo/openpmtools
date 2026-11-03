@@ -1,0 +1,184 @@
+import Foundation
+
+public struct CardLocation: Hashable, Sendable {
+    public var project: UUID
+    /// nil means the card is archived.
+    public var column: String?
+    public var card: Card
+    public var done: Date?
+}
+
+private func trimmed(_ s: String) -> String { s.trimmingCharacters(in: .whitespacesAndNewlines) }
+private func same(_ a: String, _ b: String) -> Bool { a.caseInsensitiveCompare(b) == .orderedSame }
+
+extension BoardsFile {
+    public func board(for project: UUID) -> Board? { boards.first { $0.project == project } }
+
+    // MARK: lookup helpers
+
+    private func boardIndex(_ project: UUID) throws -> Int {
+        guard let i = boards.firstIndex(where: { $0.project == project }) else { throw PMTError.noBoard }
+        return i
+    }
+
+    private func columnIndex(_ name: String, in b: Int) throws -> Int {
+        let n = trimmed(name)
+        guard let i = boards[b].columns.firstIndex(where: { same($0.name, n) }) else { throw PMTError.noSuchColumn(n) }
+        return i
+    }
+
+    /// Where a card lives: board, column (nil = archive) and position.
+    private func find(_ id: String) throws -> (board: Int, column: Int?, index: Int) {
+        let id = trimmed(id)
+        for (b, board) in boards.enumerated() {
+            for (c, col) in board.columns.enumerated() {
+                if let i = col.tasks.firstIndex(where: { same($0.id, id) }) { return (b, c, i) }
+            }
+            if let i = board.archive.firstIndex(where: { same($0.id, id) }) { return (b, nil, i) }
+        }
+        throw PMTError.noSuchTask(id)
+    }
+
+    /// Like `find`, but open cards only.
+    private func findOpen(_ id: String) throws -> (board: Int, column: Int, index: Int) {
+        let r = try find(id)
+        guard let c = r.column else { throw PMTError.noSuchTask(trimmed(id)) }
+        return (r.board, c, r.index)
+    }
+
+    public func locate(_ id: String) -> CardLocation? {
+        guard let r = try? find(id) else { return nil }
+        let b = boards[r.board]
+        if let c = r.column { return CardLocation(project: b.project, column: b.columns[c].name, card: b.columns[c].tasks[r.index], done: nil) }
+        let a = b.archive[r.index]
+        return CardLocation(project: b.project, column: nil, card: a.card, done: a.done)
+    }
+
+    // MARK: boards
+
+    public mutating func createBoard(project: UUID, columns names: [String]) throws {
+        let names = names.map(trimmed)
+        if names.contains("") { throw PMTError.emptyName }
+        for (i, n) in names.enumerated() where names[..<i].contains(where: { same($0, n) }) {
+            throw PMTError.duplicateColumn(n)
+        }
+        if names.count < 2 { throw PMTError.tooFewColumns }
+        if board(for: project) != nil { throw PMTError.boardExists }
+        boards.append(Board(project: project, columns: names.map { Column(name: $0) }))
+    }
+
+    public mutating func deleteBoard(project: UUID, force: Bool) throws {
+        let b = try boardIndex(project)
+        let has = !boards[b].archive.isEmpty || boards[b].columns.contains { !$0.tasks.isEmpty }
+        if has && !force { throw PMTError.boardHasTasks }
+        boards.remove(at: b)
+    }
+
+    // MARK: columns
+
+    public mutating func addColumn(_ name: String, project: UUID, at index: Int? = nil) throws {
+        let b = try boardIndex(project)
+        let n = trimmed(name)
+        if n.isEmpty { throw PMTError.emptyName }
+        if boards[b].columns.contains(where: { same($0.name, n) }) { throw PMTError.duplicateColumn(n) }
+        let working = boards[b].columns.count - 1
+        boards[b].columns.insert(Column(name: n), at: min(max(index ?? working, 0), working))
+    }
+
+    public mutating func renameColumn(_ name: String, to new: String, project: UUID) throws {
+        let b = try boardIndex(project)
+        let c = try columnIndex(name, in: b)
+        let n = trimmed(new)
+        if n.isEmpty { throw PMTError.emptyName }
+        if boards[b].columns.enumerated().contains(where: { $0.offset != c && same($0.element.name, n) }) {
+            throw PMTError.duplicateColumn(n)
+        }
+        boards[b].columns[c].name = n
+    }
+
+    public mutating func moveColumn(_ name: String, to index: Int, project: UUID) throws {
+        let b = try boardIndex(project)
+        let c = try columnIndex(name, in: b)
+        let working = boards[b].columns.count - 1
+        if c == working || index >= working { throw PMTError.doneColumn }
+        let col = boards[b].columns.remove(at: c)
+        boards[b].columns.insert(col, at: max(index, 0))
+    }
+
+    public mutating func removeColumn(_ name: String, project: UUID) throws {
+        let b = try boardIndex(project)
+        let c = try columnIndex(name, in: b)
+        if c == boards[b].columns.count - 1 { throw PMTError.doneColumn }
+        if !boards[b].columns[c].tasks.isEmpty { throw PMTError.columnNotEmpty(boards[b].columns[c].name) }
+        if boards[b].columns.count < 3 { throw PMTError.tooFewColumns }
+        boards[b].columns.remove(at: c)
+    }
+
+    // MARK: cards
+
+    public func newCardID(using make: () -> UUID = UUID.init) -> String {
+        let hex = make().uuidString.lowercased().replacingOccurrences(of: "-", with: "")
+        let used = Set(boards.flatMap { $0.columns.flatMap { $0.tasks.map(\.id) } + $0.archive.map(\.id) })
+        var n = 6
+        while n < hex.count && used.contains(String(hex.prefix(n))) { n += 1 }
+        return String(hex.prefix(n))
+    }
+
+    @discardableResult
+    public mutating func addCard(project: UUID, title: String, notes: String? = nil, column: String? = nil,
+                                 now: Date = Date()) throws -> String {
+        let b = try boardIndex(project)
+        let c = try column.map { try columnIndex($0, in: b) } ?? 0
+        if c == boards[b].columns.count - 1 { throw PMTError.doneColumn }
+        let t = trimmed(title)
+        if t.isEmpty { throw PMTError.emptyTitle }
+        let n = notes.map(trimmed).flatMap { $0.isEmpty ? nil : $0 }
+        let id = newCardID()
+        boards[b].columns[c].tasks.append(Card(id: id, title: t, notes: n, created: now))
+        return id
+    }
+
+    public mutating func editCard(_ id: String, title: String? = nil, notes: String? = nil) throws {
+        let r = try findOpen(id)
+        let t = try title.map { (s: String) throws -> String in
+            let s = trimmed(s)
+            if s.isEmpty { throw PMTError.emptyTitle }
+            return s
+        }
+        if let t { boards[r.board].columns[r.column].tasks[r.index].title = t }
+        if let notes {
+            let n = trimmed(notes)
+            boards[r.board].columns[r.column].tasks[r.index].notes = n.isEmpty ? nil : n
+        }
+    }
+
+    /// Returns true when the card was archived (moved to the last column).
+    @discardableResult
+    public mutating func moveCard(_ id: String, to column: String, at index: Int? = nil,
+                                  now: Date = Date()) throws -> Bool {
+        let r = try findOpen(id)
+        let dest = try columnIndex(column, in: r.board)
+        let card = boards[r.board].columns[r.column].tasks.remove(at: r.index)
+        if dest == boards[r.board].columns.count - 1 {
+            let from = boards[r.board].columns[r.column].name
+            boards[r.board].archive.append(ArchivedCard(card, fromColumn: from, done: now))
+            return true
+        }
+        let count = boards[r.board].columns[dest].tasks.count
+        boards[r.board].columns[dest].tasks.insert(card, at: min(max(index ?? count, 0), count))
+        return false
+    }
+
+    public mutating func deleteCard(_ id: String) throws {
+        let r = try find(id)
+        if let c = r.column { boards[r.board].columns[c].tasks.remove(at: r.index) }
+        else { boards[r.board].archive.remove(at: r.index) }
+    }
+
+    public mutating func restoreCard(_ id: String) throws {
+        let r = try find(id)
+        guard r.column == nil else { throw PMTError.noSuchTask(trimmed(id)) }
+        let a = boards[r.board].archive.remove(at: r.index)
+        boards[r.board].columns[0].tasks.append(a.card)
+    }
+}
