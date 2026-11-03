@@ -91,6 +91,11 @@ boards.json
     one today) gets a new UUID when loaded, and `ConfigStore.load` saves the file once if it had to add any, so
     the ids are stable from then on. This must not change anything else in the file.
   - Own projects get a UUID when created.
+- **A name is stored in one place only (David).** A FrequentFinder project's name lives only in `projects.json`;
+  `boards.json` never stores it. An own project's name lives in `boards.json` until it moves to FrequentFinder,
+  and then that entry is removed. So both apps always show the same name for the same UUID: OpenPMTools reads the
+  FrequentFinder names at launch and again every time `projects.json` changes, so a rename in FrequentFinder shows
+  at once.
 - People still type **names** in `pmt` and see names in the app. A name is resolved to a UUID without regard to
   case, like FrequentFinder's `Config.index(of:)`. Two projects with the same name (one in each app) are handled
   under "Project list rules".
