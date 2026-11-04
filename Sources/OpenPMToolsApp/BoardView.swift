@@ -38,10 +38,16 @@ struct BoardView: View {
         }
     }
 
-    /// Moves a card on this board. When it lands in Done, the poof plays at `point` (screen coordinates).
     private func move(_ id: String, to column: String, at index: Int?, poofAt point: NSPoint) {
+        model.move(id, to: column, at: index, poofAt: point)
+    }
+}
+
+extension AppModel {
+    /// Moves a card on its board. When it lands in Done, the poof plays at `point` (screen coordinates).
+    func move(_ id: String, to column: String, at index: Int?, poofAt point: NSPoint) {
         var archived = false
-        guard model.update({ archived = try $0.moveCard(id, to: column, at: index) }), archived else { return }
+        guard update({ archived = try $0.moveCard(id, to: column, at: index) }), archived else { return }
         (Poof() as PoofShowing).show(at: point)
     }
 }
@@ -163,15 +169,7 @@ private struct ColumnView: View {
         }
     }
 
-    private var doneArea: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "sparkles").font(.largeTitle).accessibilityHidden(true)
-            Text("Drop here when done")
-        }
-        .foregroundStyle(.secondary)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.secondary, style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])))
-    }
+    private var doneArea: some View { DoneArea() }
 
     /// Moves a dragged card here, before the card at `target` (nil = at the end).
     /// Only cards on this board are taken, so dropped text from other apps is ignored.
@@ -185,5 +183,18 @@ private struct ColumnView: View {
         }
         move(id, column.name, at, NSEvent.mouseLocation)
         return true
+    }
+}
+
+/// The Done column's drop target.
+struct DoneArea: View {
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "sparkles").font(.largeTitle).accessibilityHidden(true)
+            Text("Drop here when done")
+        }
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.secondary, style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])))
     }
 }

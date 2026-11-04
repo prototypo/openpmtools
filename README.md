@@ -6,6 +6,8 @@ It is a companion to [FrequentFinder](../frequent-finder): FrequentFinder's acti
 and follow its changes live, and projects that exist only in OpenPMTools ("My Projects") make it useful on its own.
 Drag a project from My Projects onto FrequentFinder's All Projects window to make it a FrequentFinder project; its
 board stays with it. The `pmt` command does everything the app does to boards and tasks.
+The Big Board toolbar button opens a window with every open task from every project. Columns with the same name are
+merged, and each card shows its project's name and colour. A card can only move to a column its own board has.
 
 ![A board with To Do, Doing, Waiting and Done columns](docs/images/board.png)
 
