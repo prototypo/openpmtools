@@ -111,3 +111,17 @@ private let t = Date(timeIntervalSince1970: 1_800_000_000)
     #expect(f.locate(id) == nil)
     #expect(throws: PMTError.noSuchTask(id)) { try f.deleteCard(id) }
 }
+
+@Test func bigBoardMergesColumnsInOrder() throws {
+    let q = UUID()
+    var f = BoardsFile()
+    try f.createBoard(project: p, columns: ["To Do", "Doing", "Done"])
+    try f.createBoard(project: q, columns: ["Backlog", "to do", "Review", "Shipped"])
+    let a = try f.addCard(project: p, title: "a"), b = try f.addCard(project: q, title: "b", column: "To Do")
+    _ = try f.moveCard(try f.addCard(project: q, title: "c"), to: "Shipped")
+    let big = f.bigBoard()
+    #expect(big.map(\.name) == ["Backlog", "To Do", "Review", "Doing", "Shipped", "Done"])
+    #expect(big[1].cards.map(\.card.id) == [a, b] && big[1].cards.map(\.project) == [p, q])
+    #expect(big.filter(\.isDone).map(\.name) == ["Shipped", "Done"])
+    #expect(big[4].archived == 1 && big[5].archived == 0)
+}

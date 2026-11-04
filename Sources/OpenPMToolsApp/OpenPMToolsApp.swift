@@ -24,6 +24,13 @@ struct OpenPMToolsApp: App {
                 }
             }
         }
+
+        Window("Big Board", id: "big-board") {
+            BigBoardView().environment(model)
+                .frame(minWidth: 520, minHeight: 360)
+                .background(WindowReader { $0.setFrameAutosaveName("BigBoard") })
+        }
+        .defaultSize(width: 1200, height: 700)
     }
 }
 
@@ -33,6 +40,7 @@ struct ContentView: View {
     @Environment(AppModel.self) private var model
     @AppStorage("selection") private var storedSelection: String?
     @FocusState private var searchFocused: Bool
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         @Bindable var model = model
@@ -62,6 +70,12 @@ struct ContentView: View {
             } else {
                 Text("Select a project").foregroundStyle(.secondary)
                     .navigationTitle("OpenPMTools")
+            }
+        }
+        .toolbar {
+            ToolbarItem {
+                Button { openWindow(id: "big-board") } label: { Label("Big Board", systemImage: "square.grid.3x3.topleft.filled") }
+                    .help("Show all tasks from all projects")
             }
         }
         .searchable(text: $model.search, placement: .toolbar, prompt: "Search Tasks")

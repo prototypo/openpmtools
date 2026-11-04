@@ -182,3 +182,38 @@ extension BoardsFile {
         boards[r.board].columns[0].tasks.append(a.card)
     }
 }
+
+/// One column of the Big Board: every board's column with this name (case-insensitive).
+public struct BigColumn: Hashable, Sendable {
+    public var name: String
+    /// Open cards, board by board, each in its board's order.
+    public var cards: [CardLocation]
+    /// True when this is some board's last (Done) column.
+    public var isDone: Bool
+    /// Done cards of the boards whose Done column has this name.
+    public var archived: Int
+}
+
+extension BoardsFile {
+    /// All boards' columns merged by name. Each board's column order is kept:
+    /// a name not seen yet goes just after that board's previous column. Done columns go last.
+    public func bigBoard() -> [BigColumn] {
+        var cols: [BigColumn] = []
+        for b in boards {
+            var at = 0
+            for (n, c) in b.columns.enumerated() {
+                let i: Int
+                if let found = cols.firstIndex(where: { same($0.name, c.name) }) {
+                    i = found
+                } else {
+                    i = at
+                    cols.insert(BigColumn(name: c.name, cards: [], isDone: false, archived: 0), at: i)
+                }
+                cols[i].cards += c.tasks.map { CardLocation(project: b.project, column: c.name, card: $0, done: nil) }
+                if n == b.columns.count - 1 { cols[i].isDone = true; cols[i].archived += b.archive.count }
+                at = i + 1
+            }
+        }
+        return cols.filter { !$0.isDone } + cols.filter(\.isDone)
+    }
+}

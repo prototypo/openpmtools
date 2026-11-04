@@ -13,6 +13,8 @@ struct CardView: View {
     let move: (String, NSPoint) -> Void
     /// A dragged card id dropped on this card; true when it landed on the lower half.
     let drop: (String, Bool) -> Bool
+    /// On the Big Board: the card's project name and colour.
+    var tag: (name: String, color: Color)? = nil
     @State private var editing = false
     @State private var deleting = false
     @State private var targeted = false
@@ -20,6 +22,9 @@ struct CardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
+            if let tag {
+                Text(tag.name).font(.caption.weight(.semibold)).foregroundStyle(tag.color).lineLimit(1)
+            }
             Text(card.title).font(.headline)
             if let notes = card.notes {
                 Text(notes).foregroundStyle(.secondary).lineLimit(3)
@@ -27,7 +32,11 @@ struct CardView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(8)
+        .padding(.leading, tag == nil ? 0 : 4)
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+        .overlay(alignment: .leading) {
+            if let tag { UnevenRoundedRectangle(topLeadingRadius: 6, bottomLeadingRadius: 6).fill(tag.color).frame(width: 5) }
+        }
         .overlay(RoundedRectangle(cornerRadius: 6)
             .strokeBorder(Color.accentColor, lineWidth: 2)
             .opacity(flashing || targeted ? 1 : 0))
@@ -41,7 +50,7 @@ struct CardView: View {
             return drop(id, location.y > frame.height / 2)
         } isTargeted: { targeted = $0 }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(card.title), in \(column)")
+        .accessibilityLabel(tag.map { "\(card.title), \($0.name), in \(column)" } ?? "\(card.title), in \(column)")
         .accessibilityValue(card.notes ?? "")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { editing = true }
