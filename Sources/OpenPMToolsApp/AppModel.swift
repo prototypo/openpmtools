@@ -47,6 +47,11 @@ final class AppModel {
             }
         }
     }
+    /// Apps that get an "Open in" button on every project. An app setting, so it lives in
+    /// UserDefaults, not in boards.json.
+    var linkedApps: [LinkedApp] = AppModel.loadLinkedApps() {
+        didSet { UserDefaults.standard.set(try? JSONEncoder().encode(linkedApps), forKey: "linkedApps") }
+    }
     @ObservationIgnored private var watchers: [DispatchSourceFileSystemObject] = []
     @ObservationIgnored private var timer: Timer?
 
@@ -62,6 +67,10 @@ final class AppModel {
         NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshAllGit() }
         }
+    }
+
+    private static func loadLinkedApps() -> [LinkedApp] {
+        UserDefaults.standard.data(forKey: "linkedApps").flatMap { try? JSONDecoder().decode([LinkedApp].self, from: $0) } ?? []
     }
 
     func reload() {

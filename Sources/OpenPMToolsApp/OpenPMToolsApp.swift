@@ -35,6 +35,10 @@ struct OpenPMToolsApp: App {
                 .background(WindowReader { $0.setFrameAutosaveName("BigBoard") })
         }
         .defaultSize(width: 1200, height: 700)
+
+        Settings {
+            SettingsView().environment(model)
+        }
     }
 }
 
@@ -77,6 +81,9 @@ struct ContentView: View {
             }
         }
         .toolbar {
+            if let id = model.selection ?? model.offSidebar {
+                ToolbarItemGroup { OpenInButtons(project: id) }
+            }
             ToolbarItem {
                 Button { openWindow(id: "big-board") } label: { Label("Big Board", systemImage: "square.grid.3x3.topleft.filled") }
                     .help("Show all tasks from all projects")

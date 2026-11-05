@@ -24,6 +24,7 @@ struct Sidebar: View {
                     }
                     .accessibilityLabel("\(entry.name), \(GitSymbol.description(for: status))")
                     .tag(entry.id)
+                    .contextMenu { OpenInButtons(project: entry.id) }
                 }
             }
             Section("My Projects") {
@@ -32,6 +33,7 @@ struct Sidebar: View {
                         .tag(entry.id)
                         .draggable(ProjectDrag(id: entry.id, name: entry.name))
                         .contextMenu {
+                            OpenInButtons(project: entry.id)
                             Button("Rename…") { renaming = entry }
                             Button("Delete…", role: .destructive) { deleting = entry }
                         }

@@ -8,6 +8,10 @@ Drag a project from My Projects onto FrequentFinder's All Projects window to mak
 board stays with it. The `pmt` command does everything the app does to boards and tasks.
 The Big Board toolbar button opens a window with every open task from every project. Columns with the same name are
 merged, and each card shows its project's name and colour. A card can only move to a column its own board has.
+Linked Apps (Settings, ⌘,): drop an app from Finder or the Dock, or click Add App…. The toolbar and each sidebar row's
+menu then have "Open in <app>". An app can be linked when it opens links of the form `<scheme>://project/<project id>`;
+its scheme is read from the app. OpenPMTools opens `openpmtools://project/<project id>` itself, so FrequentFinder (and
+`open` in Terminal) can link to a board.
 
 ![A board with To Do, Doing, Waiting and Done columns](docs/images/board.png)
 
