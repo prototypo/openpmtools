@@ -15,6 +15,8 @@ struct OpenPMToolsApp: App {
             ContentView().environment(model)
         }
         .defaultSize(width: 1000, height: 640)
+        // Project links open here (ContentView.onOpenURL), never in Big Board.
+        .handlesExternalEvents(matching: ["project"])
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("New Project…") { model.addingProject = true }
@@ -35,6 +37,7 @@ struct OpenPMToolsApp: App {
                 .background(WindowReader { $0.setFrameAutosaveName("BigBoard") })
         }
         .defaultSize(width: 1200, height: 700)
+        .handlesExternalEvents(matching: [])
 
         Settings {
             SettingsView().environment(model)
