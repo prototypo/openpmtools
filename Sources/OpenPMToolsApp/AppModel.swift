@@ -32,6 +32,21 @@ final class AppModel {
     var offSidebar: UUID?
     /// A card for the shown board to scroll to and flash.
     var highlight: (project: UUID, card: String)?
+    /// The card being dragged, so the Big Board can grey out columns it cannot go to.
+    /// SwiftUI reports no drag end, so this clears itself once the mouse button is up.
+    // ponytail: polls the mouse button 5 times a second until it is up; use an NSDraggingSource if that ever misses.
+    var dragging: String? {
+        didSet {
+            guard dragging != nil, oldValue == nil else { return }
+            Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] timer in
+                MainActor.assumeIsolated {
+                    guard NSEvent.pressedMouseButtons == 0 else { return }
+                    self?.dragging = nil
+                    timer.invalidate()
+                }
+            }
+        }
+    }
     @ObservationIgnored private var watchers: [DispatchSourceFileSystemObject] = []
     @ObservationIgnored private var timer: Timer?
 
