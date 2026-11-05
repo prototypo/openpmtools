@@ -60,12 +60,28 @@ private struct BigColumnView: View {
         .padding(8)
         .frame(width: 240)
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(targeted ? AnyShapeStyle(.selection.opacity(0.3)) : AnyShapeStyle(.quinary),
+        .background(targeted && !blocked ? AnyShapeStyle(.selection.opacity(0.3)) : AnyShapeStyle(.quinary),
                     in: RoundedRectangle(cornerRadius: 10))
+        .saturation(blocked ? 0 : 1)
+        .opacity(blocked ? 0.35 : 1)
+        .animation(.easeInOut(duration: 0.15), value: blocked)
         .dropDestination(for: String.self) { ids, _ in
             guard let id = ids.first else { return false }
             return drop(id, onto: nil, below: false)
         } isTargeted: { targeted = $0 }
+    }
+
+    /// The board a card is on, and its column with this column's name (nil if it has none).
+    private func place(of id: String) -> (board: Board, column: PMTCore.Column?)? {
+        guard let board = model.file.boards.first(where: { $0.columns.contains { $0.tasks.contains { $0.id == id } } })
+        else { return nil }
+        return (board, board.columns.first { $0.name.caseInsensitiveCompare(column.name) == .orderedSame })
+    }
+
+    /// True while a card is dragged whose board has no column with this name.
+    private var blocked: Bool {
+        guard let id = model.dragging, let p = place(of: id) else { return false }
+        return p.column == nil
     }
 
     private func projectName(_ id: UUID) -> String { model.catalog.entry(for: id)?.name ?? "(orphaned board)" }
@@ -78,11 +94,11 @@ private struct BigColumnView: View {
     }
 
     /// Moves a dragged card into this column on its own board. Dropped on a card of the same board,
-    /// it lands before or after that card; otherwise at the end. Fails if its board has no such column.
+    /// it lands before or after that card; otherwise at the end. Beeps and fails if its board has no such column.
     private func drop(_ id: String, onto target: Int?, below: Bool) -> Bool {
-        guard let board = model.file.boards.first(where: { $0.columns.contains { $0.tasks.contains { $0.id == id } } }),
-              let col = board.columns.first(where: { $0.name.caseInsensitiveCompare(column.name) == .orderedSame })
-        else { return false }
+        guard let (board, col) = place(of: id) else { return false }
+        // HIG: a refused drop slides back (returning false) and plays the system alert sound.
+        guard let col else { NSSound.beep(); return false }
         var at: Int?
         if let t = target, column.cards[t].project == board.project,
            let i = col.tasks.firstIndex(where: { $0.id == column.cards[t].card.id }) {

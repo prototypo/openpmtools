@@ -44,7 +44,10 @@ struct CardView: View {
         .contentShape(RoundedRectangle(cornerRadius: 6))
         .onTapGesture { editing = true }
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
-        .draggable(card.id)
+        .onDrag {
+            model.dragging = card.id
+            return NSItemProvider(object: card.id as NSString)
+        }
         .dropDestination(for: String.self) { ids, location in
             guard let id = ids.first else { return false }
             return drop(id, location.y > frame.height / 2)
