@@ -104,8 +104,22 @@ final class AppModel {
 
     /// Shows a card's board with the card highlighted, selecting its sidebar row if it has one.
     func show(_ card: String, in project: UUID) {
-        search = ""
         highlight = (project, card)
+        select(project)
+    }
+
+    /// Shows a project's board (or board setup) from an `openpmtools://project/<UUID>` link.
+    /// Returns false when no project or board has this id.
+    func openLink(project: UUID) -> Bool {
+        guard catalog.entry(for: project) != nil || file.board(for: project) != nil else { return false }
+        highlight = nil
+        select(project)
+        return true
+    }
+
+    /// Selects a project's sidebar row, or shows it off the sidebar when it has none.
+    private func select(_ project: UUID) {
+        search = ""
         if let entry = catalog.entry(for: project), entry.isActive {
             offSidebar = nil
             selection = project

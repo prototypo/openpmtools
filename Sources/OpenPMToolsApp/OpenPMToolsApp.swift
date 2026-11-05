@@ -1,6 +1,10 @@
 import AppKit
+import FFCore
 import PMTCore
 import SwiftUI
+
+/// Our URL scheme: `openpmtools://project/<UUID>` shows that project's board. Declared in scripts/make-app.sh.
+let linkScheme = "openpmtools"
 
 @main
 struct OpenPMToolsApp: App {
@@ -91,7 +95,16 @@ struct ContentView: View {
         .frame(minWidth: 760, minHeight: 480)
         // Saves and restores the window's size and place across runs.
         .background(WindowReader { $0.setFrameAutosaveName("Main") })
-        .onAppear { model.selection = storedSelection.flatMap(UUID.init(uuidString:)) }
+        // A link that opened this window has already chosen a project; keep it.
+        .onAppear {
+            if model.selection == nil && model.offSidebar == nil {
+                model.selection = storedSelection.flatMap(UUID.init(uuidString:))
+            }
+        }
+        .onOpenURL { url in
+            let found = LinkedApp.projectID(in: url, scheme: linkScheme).map { model.openLink(project: $0) } ?? false
+            model.error = found ? nil : "No project with this link."
+        }
         .onChange(of: model.selection) {
             storedSelection = model.selection?.uuidString
             // Picking a sidebar row leaves any off-sidebar board and drops another project's highlight.
