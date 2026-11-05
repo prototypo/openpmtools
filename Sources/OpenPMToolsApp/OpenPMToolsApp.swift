@@ -1,6 +1,10 @@
 import AppKit
+import FFCore
 import PMTCore
 import SwiftUI
+
+/// Our URL scheme: `openpmtools://project/<UUID>` shows that project's board. Declared in scripts/make-app.sh.
+let linkScheme = "openpmtools"
 
 @main
 struct OpenPMToolsApp: App {
@@ -11,6 +15,8 @@ struct OpenPMToolsApp: App {
             ContentView().environment(model)
         }
         .defaultSize(width: 1000, height: 640)
+        // Project links open here (ContentView.onOpenURL), never in Big Board.
+        .handlesExternalEvents(matching: ["project"])
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("New Project…") { model.addingProject = true }
@@ -31,6 +37,11 @@ struct OpenPMToolsApp: App {
                 .background(WindowReader { $0.setFrameAutosaveName("BigBoard") })
         }
         .defaultSize(width: 1200, height: 700)
+        .handlesExternalEvents(matching: [])
+
+        Settings {
+            SettingsView().environment(model)
+        }
     }
 }
 
@@ -73,6 +84,9 @@ struct ContentView: View {
             }
         }
         .toolbar {
+            if let id = model.selection ?? model.offSidebar {
+                ToolbarItemGroup { OpenInButtons(project: id) }
+            }
             ToolbarItem {
                 Button { openWindow(id: "big-board") } label: { Label("Big Board", systemImage: "square.grid.3x3.topleft.filled") }
                     .help("Show all tasks from all projects")
@@ -91,7 +105,16 @@ struct ContentView: View {
         .frame(minWidth: 760, minHeight: 480)
         // Saves and restores the window's size and place across runs.
         .background(WindowReader { $0.setFrameAutosaveName("Main") })
-        .onAppear { model.selection = storedSelection.flatMap(UUID.init(uuidString:)) }
+        // A link that opened this window has already chosen a project; keep it.
+        .onAppear {
+            if model.selection == nil && model.offSidebar == nil {
+                model.selection = storedSelection.flatMap(UUID.init(uuidString:))
+            }
+        }
+        .onOpenURL { url in
+            let found = LinkedApp.projectID(in: url, scheme: linkScheme).map { model.openLink(project: $0) } ?? false
+            model.error = found ? nil : "No project with this link."
+        }
         .onChange(of: model.selection) {
             storedSelection = model.selection?.uuidString
             // Picking a sidebar row leaves any off-sidebar board and drops another project's highlight.
