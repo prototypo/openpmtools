@@ -17,6 +17,15 @@ final class AppModel {
     private(set) var ffError: String?
     /// The last failed action, shown in the UI.
     var error: String?
+
+    /// Shows a linked-app error for 3 seconds, unless another error replaces it first.
+    func flash(_ message: String) {
+        error = message
+        Task {
+            try? await Task.sleep(for: .seconds(3))
+            if error == message { error = nil }
+        }
+    }
     /// Git status by path. Missing = not a git repo, or not checked yet.
     private(set) var git: [String: GitStatus] = [:]
     /// The selected sidebar project. The view keeps it in @AppStorage across launches.

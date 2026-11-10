@@ -66,7 +66,12 @@ struct SettingsView: View {
         do {
             for url in files { try apps.add(LinkedApp(appAt: url), selfBundleID: Bundle.main.bundleIdentifier) }
         } catch {
-            failure = "\(error)"
+            let message = "\(error)"
+            failure = message
+            Task {
+                try? await Task.sleep(for: .seconds(3))
+                if failure == message { failure = nil }
+            }
             return false
         }
         model.linkedApps = apps
@@ -83,7 +88,7 @@ struct OpenInButtons: View {
     var body: some View {
         ForEach(model.linkedApps.filter { $0.appURL != nil }, id: \.bundleID) { app in
             Button {
-                do { try app.open(project) } catch { model.error = "\(error)" }
+                do { try app.open(project) } catch { model.flash("\(error)") }
             } label: {
                 Label("Open in \(app.name)", systemImage: "arrow.up.forward.app")
             }
