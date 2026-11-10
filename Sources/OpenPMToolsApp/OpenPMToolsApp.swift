@@ -113,7 +113,7 @@ struct ContentView: View {
         }
         .onOpenURL { url in
             let found = LinkedApp.projectID(in: url, scheme: linkScheme).map { model.openLink(project: $0) } ?? false
-            model.error = found ? nil : "No project with this link."
+            if !found { model.flash("No project with this link.") }
         }
         .onChange(of: model.selection) {
             storedSelection = model.selection?.uuidString
