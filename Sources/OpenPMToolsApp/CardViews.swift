@@ -100,7 +100,7 @@ struct CardView: View {
         var parts = [card.title]
         if let tag { parts.append(tag.name) }
         if let priority { parts.append("\(priority.label) priority") }
-        if let due = card.due { parts.append("due " + dueText(due, today: model.today)) }
+        if let due = card.due { parts.append(dueSpoken(due, today: model.today)) }
         return parts.joined(separator: ", ") + ", in \(column)"
     }
 
@@ -250,7 +250,7 @@ struct DueLabel: View {
         .padding(.vertical, 1)
         .background((urgency?.color ?? .secondary).opacity(urgency == nil ? 0.12 : 0.25), in: Capsule())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("due " + words)
+        .accessibilityLabel(dueSpoken(due, today: done ? nil : today))
     }
 }
 

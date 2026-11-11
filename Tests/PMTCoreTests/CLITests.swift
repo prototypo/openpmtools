@@ -46,6 +46,15 @@ struct CLITests {
         #expect(json.contains(#""effectivePriority" : "medium""#) && json.contains(#""due" : "2026-11-15""#))
     }
 
+    @Test func cliDoneTaskShowsCurrentPriorityAndRefusesEdit() throws {
+        try pmt("project", "add", "P"); try pmt("board", "create", "P", "To Do", "Done")
+        let id = try pmtNoon("task", "add", "P", "T", "--due", "2026-11-14", "--priority", "low")
+        try pmtNoon("task", "done", id)
+        #expect(try pmtNoon("task", "show", id).contains("priority: High (raised: due soon)"))
+        #expect(throws: PMTError.taskDone(id)) { try pmtNoon("task", "edit", id, "--priority", "high") }
+        #expect("\(PMTError.taskDone(id))" == "Task \(id) is done already. To change it, restore it first: pmt task restore \(id)")
+    }
+
     @Test func cliEndToEnd() throws {
         try pmt("project", "add", "Breakthrough")
         try pmt("board", "create", "breakthrough", "To Do", "Doing", "Done")

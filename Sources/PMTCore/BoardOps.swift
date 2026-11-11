@@ -42,7 +42,7 @@ extension BoardsFile {
     /// Like `find`, but open cards only.
     private func findOpen(_ id: String) throws -> (board: Int, column: Int, index: Int) {
         let r = try find(id)
-        guard let c = r.column else { throw PMTError.noSuchTask(trimmed(id)) }
+        guard let c = r.column else { throw PMTError.taskDone(trimmed(id)) }
         return (r.board, c, r.index)
     }
 

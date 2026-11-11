@@ -221,9 +221,8 @@ public enum PMTCLI {
                 let col = l.column ?? "Done " + ISO8601DateFormatter().string(from: l.done ?? now)
                 var s = "id: \(l.card.id)\ntitle: \(l.card.title)\nproject: \(projectName(catalog(f), l.project))\ncolumn: \(col)"
                 if let d = l.card.due { s += "\ndue: \(d.text)" }
-                // A done card is never raised: urgency is for open cards only.
-                if let p = l.column == nil ? l.card.priority : l.card.effectivePriority(today: today) {
-                    s += "\npriority: \(p.label)" + (l.column != nil && l.card.isRaised(today: today) ? " (raised: due soon)" : "")
+                if let p = l.card.effectivePriority(today: today) {
+                    s += "\npriority: \(p.label)" + (l.card.isRaised(today: today) ? " (raised: due soon)" : "")
                 }
                 if let n = l.card.notes { s += "\n\n" + n }
                 return s

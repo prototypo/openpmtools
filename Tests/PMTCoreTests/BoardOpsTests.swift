@@ -106,7 +106,7 @@ private let t = Date(timeIntervalSince1970: 1_800_000_000)
     let id = try f.addCard(project: p, title: "x")
     _ = try f.moveCard(id, to: "Done", now: t)
     #expect(f.locate(id)?.column == nil && f.locate(id)?.done == t)
-    #expect(throws: PMTError.noSuchTask(id)) { try f.editCard(id, title: "q") }
+    #expect(throws: PMTError.taskDone(id)) { try f.editCard(id, title: "q") }
     try f.deleteCard(id)
     #expect(f.locate(id) == nil)
     #expect(throws: PMTError.noSuchTask(id)) { try f.deleteCard(id) }
@@ -150,8 +150,8 @@ private func ids(_ f: BoardsFile, _ col: Int, board: UUID = p) -> [String] { f.b
     try f.setDue(id, nil); try f.setPriority(id, nil)
     #expect(f.locate(id)?.card.due == nil && f.locate(id)?.card.priority == nil)
     try f.moveCard(id, to: "Done")
-    #expect(throws: PMTError.noSuchTask(id)) { try f.setDue(id, today) }
-    #expect(throws: PMTError.noSuchTask(id)) { try f.setPriority(id, .low) }
+    #expect(throws: PMTError.taskDone(id)) { try f.setDue(id, today) }
+    #expect(throws: PMTError.taskDone(id)) { try f.setPriority(id, .low) }
 }
 
 @Test func dropTakesTargetsEffectivePriority() throws {

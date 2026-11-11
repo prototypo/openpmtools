@@ -34,6 +34,13 @@ struct SearchView: View {
                         Text("\(project) · \(place)").foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 6)
+                    // The same urgency stripe as on the card (open tasks only).
+                    .overlay(alignment: .top) {
+                        if r.column != nil, let u = r.card.urgency(today: model.today) {
+                            RoundedRectangle(cornerRadius: 2).fill(u.color).frame(height: 4)
+                        }
+                    }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)

@@ -92,3 +92,12 @@ private func card(_ id: String, _ p: Priority? = nil, due: String? = nil) -> Car
     let d = Day("2026-03-29")!
     #expect(Day.today(now: d.localDate) == d)
 }
+
+@Test func dueSpokenIsPlainEnglish() {
+    #expect(dueSpoken(Day("2026-11-12")!, today: today) == "overdue, was due 12 November")
+    #expect(dueSpoken(today, today: today) == "due today")
+    #expect(dueSpoken(Day("2026-11-15")!, today: today) == "due tomorrow")
+    #expect(dueSpoken(Day("2026-11-16")!, today: today) == "due in 2 days")
+    #expect(dueSpoken(Day("2026-11-20")!, today: today) == "due 20 November")
+    #expect(dueSpoken(Day("2026-11-12")!, today: nil) == "due 12 November")
+}

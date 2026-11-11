@@ -108,6 +108,20 @@ public func dueText(_ due: Day, today: Day) -> String {
     return plain
 }
 
+/// Spoken words for a due date (VoiceOver): "overdue, was due 12 November", "due today", "due tomorrow",
+/// "due in 2 days", "due 20 November". With no `today` (a done card): always "due 20 November".
+public func dueSpoken(_ due: Day, today: Day?) -> String {
+    let months = ["January", "February", "March", "April", "May", "June", "July", "August", "September",
+                  "October", "November", "December"]
+    let plain = "\(due.day) \(months[due.month - 1])"
+    guard let today else { return "due " + plain }
+    if due < today { return "overdue, was due " + plain }
+    if due == today { return "due today" }
+    if due == today.adding(days: 1) { return "due tomorrow" }
+    if due == today.adding(days: 2) { return "due in 2 days" }
+    return "due " + plain
+}
+
 /// Display order: effective priority (High first), then due date (earliest first, none last), then input order.
 public func displayOrder<T>(_ items: [T], today: Day, card: (T) -> Card) -> [T] {
     func rank(_ p: Priority?) -> Int { p.map { Priority.allCases.firstIndex(of: $0)! + 1 } ?? 0 }
