@@ -25,7 +25,11 @@ struct CardView: View {
             if let tag {
                 Text(tag.name).font(.caption.weight(.semibold)).foregroundStyle(tag.color).lineLimit(1)
             }
-            Text(card.title).font(.headline)
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                if let p = priority { PriorityIcon(priority: p, raised: card.isRaised(today: model.today)) }
+                Text(card.title).font(.headline)
+            }
+            if let due = card.due { DueLabel(due: due, today: model.today, done: false) }
             if let notes = card.notes {
                 Text(notes).foregroundStyle(.secondary).lineLimit(3)
             }
@@ -36,6 +40,11 @@ struct CardView: View {
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
         .overlay(alignment: .leading) {
             if let tag { UnevenRoundedRectangle(topLeadingRadius: 6, bottomLeadingRadius: 6).fill(tag.color).frame(width: 5) }
+        }
+        .overlay(alignment: .top) {
+            if let u = card.urgency(today: model.today) {
+                UnevenRoundedRectangle(topLeadingRadius: 6, topTrailingRadius: 6).fill(u.color).frame(height: 4)
+            }
         }
         .overlay(RoundedRectangle(cornerRadius: 6)
             .strokeBorder(Color.accentColor, lineWidth: 2)
@@ -53,7 +62,7 @@ struct CardView: View {
             return drop(id, location.y > frame.height / 2)
         } isTargeted: { targeted = $0 }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(tag.map { "\(card.title), \($0.name), in \(column)" } ?? "\(card.title), in \(column)")
+        .accessibilityLabel(accessibilityText)
         .accessibilityValue(card.notes ?? "")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { editing = true }
@@ -77,6 +86,17 @@ struct CardView: View {
         } message: {
             Text("This cannot be undone.")
         }
+    }
+
+    private var priority: Priority? { card.effectivePriority(today: model.today) }
+
+    /// Title, project, priority, due words, column.
+    private var accessibilityText: String {
+        var parts = [card.title]
+        if let tag { parts.append(tag.name) }
+        if let priority { parts.append("\(priority.label) priority") }
+        if let due = card.due { parts.append("due " + dueText(due, today: model.today)) }
+        return parts.joined(separator: ", ") + ", in \(column)"
     }
 
     /// The card's centre in screen coordinates. SwiftUI's global space is the window's content view.
@@ -132,5 +152,60 @@ struct CardEditor: View {
         }
         .padding(20)
         .frame(width: 380)
+    }
+}
+
+extension Urgency {
+    var color: Color {
+        switch self {
+        case .later: .green
+        case .soon: .yellow
+        case .now: .red
+        }
+    }
+}
+
+/// The due date as a pill: a symbol and words, so colour is never the only signal (HIG).
+/// The fill is pale so the dark text stays readable on yellow. Done cards: plain date, no colour.
+struct DueLabel: View {
+    let due: Day
+    let today: Day
+    let done: Bool
+
+    var body: some View {
+        let probe = Card(id: "", title: "", created: .distantPast, due: due)
+        let urgency = done ? nil : probe.urgency(today: today)
+        let symbol: String? = switch urgency {
+        case .now: probe.isOverdue(today: today) ? "exclamationmark.triangle.fill" : "clock.badge.exclamationmark"
+        case .soon: "clock"
+        case .later: "calendar"
+        case nil: nil
+        }
+        // A done card gets the plain date: with "today" long ago, dueText has no relative words.
+        let words = done ? dueText(due, today: Day("1900-01-01")!) : dueText(due, today: today)
+        HStack(spacing: 3) {
+            if let symbol { Image(systemName: symbol).accessibilityHidden(true) }
+            Text(words)
+        }
+        .font(.caption)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 1)
+        .background((urgency?.color ?? .secondary).opacity(urgency == nil ? 0.12 : 0.25), in: Capsule())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("due " + words)
+    }
+}
+
+/// Low ↓, Medium !, High !! before the title. The tooltip says when the due date raised it.
+struct PriorityIcon: View {
+    let priority: Priority
+    let raised: Bool
+
+    var body: some View {
+        Text(priority.symbol)
+            .font(.headline)
+            .foregroundStyle(priority == .low ? Color.secondary : Color.primary)
+            .help(raised ? "Raised: due soon" : "\(priority.label) priority")
+            .accessibilityLabel("\(priority.label) priority")
     }
 }

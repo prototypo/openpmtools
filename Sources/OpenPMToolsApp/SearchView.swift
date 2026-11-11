@@ -24,14 +24,20 @@ struct SearchView: View {
                     }
                 } label: {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(r.card.title).font(.headline)
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            if r.column != nil, let p = r.card.effectivePriority(today: model.today) {
+                                PriorityIcon(priority: p, raised: r.card.isRaised(today: model.today))
+                            }
+                            Text(r.card.title).font(.headline)
+                        }
+                        if let due = r.card.due { DueLabel(due: due, today: model.today, done: r.column == nil) }
                         Text("\(project) · \(place)").foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("\(r.card.title), \(project), \(place)")
+                .accessibilityElement(children: .combine)
             }
             .sheet(isPresented: Binding(get: { showing != nil }, set: { if !$0 { showing = nil } })) {
                 if let card = showing, let project = showingProject {

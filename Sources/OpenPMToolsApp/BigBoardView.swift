@@ -15,7 +15,7 @@ struct BigBoardView: View {
         } else {
             ScrollView(.horizontal) {
                 HStack(alignment: .top, spacing: 12) {
-                    ForEach(model.file.bigBoard(today: Day.today()), id: \.name) { BigColumnView(column: $0) }
+                    ForEach(model.file.bigBoard(today: model.today), id: \.name) { BigColumnView(column: $0) }
                 }
                 .padding(12)
                 .frame(maxHeight: .infinity, alignment: .top)
@@ -44,11 +44,11 @@ private struct BigColumnView: View {
             }
             ScrollView(.vertical) {
                 VStack(spacing: 8) {
-                    ForEach(Array(column.cards.enumerated()), id: \.element.card.id) { i, loc in
+                    ForEach(column.cards, id: \.card.id) { loc in
                         let board = model.file.board(for: loc.project)
                         CardView(card: loc.card, column: column.name, columns: board?.columns.map(\.name) ?? [],
                                  flashing: false, move: { model.move(loc.card.id, to: $0, at: nil, poofAt: $1) },
-                                 drop: { id, below in drop(id, onto: i, below: below) },
+                                 drop: { id, below in drop(id, onto: loc.card.id, below: below) },
                                  tag: (projectName(loc.project), projectColor(loc.project)))
                     }
                     if column.isDone && column.cards.isEmpty { DoneArea().frame(minHeight: 160) }
@@ -93,24 +93,12 @@ private struct BigColumnView: View {
         return palette[(model.file.boards.firstIndex { $0.project == id } ?? 0) % palette.count]
     }
 
-    /// Moves a dragged card into this column on its own board. Dropped on a card of the same board,
-    /// it lands before or after that card; otherwise at the end. Beeps and fails if its board has no such column.
-    private func drop(_ id: String, onto target: Int?, below: Bool) -> Bool {
-        guard let (board, col) = place(of: id) else { return false }
+    /// Moves a dragged card into this column on its own board, onto card `target` (nil = empty space),
+    /// taking its priority (see BoardsFile.dropCard). Beeps and fails if its board has no such column.
+    private func drop(_ id: String, onto target: String?, below: Bool) -> Bool {
+        guard let (_, col) = place(of: id) else { return false }
         // HIG: a refused drop slides back (returning false) and plays the system alert sound.
         guard let col else { NSSound.beep(); return false }
-        var at: Int?
-        if let t = target, column.cards[t].project == board.project,
-           let i = col.tasks.firstIndex(where: { $0.id == column.cards[t].card.id }) {
-            var t = below ? i + 1 : i
-            // moveCard takes the card out first, so a card from higher up in this column shifts the target.
-            if let from = col.tasks.firstIndex(where: { $0.id == id }) {
-                if from == t { return true }
-                if from < t { t -= 1 }
-            }
-            at = t
-        }
-        model.move(id, to: col.name, at: at, poofAt: NSEvent.mouseLocation)
-        return true
+        return model.drop(id, to: col.name, onto: target, below: below, poofAt: NSEvent.mouseLocation)
     }
 }

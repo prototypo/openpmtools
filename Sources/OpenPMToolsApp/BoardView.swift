@@ -50,6 +50,21 @@ extension AppModel {
         guard update({ archived = try $0.moveCard(id, to: column, at: index) }), archived else { return }
         (Poof() as PoofShowing).show(at: point)
     }
+
+    /// A dragged card dropped in `column`, on card `target` (nil = empty space). It takes the target's
+    /// priority (see BoardsFile.dropCard). VoiceOver hears when that changes its priority.
+    @discardableResult
+    func drop(_ id: String, to column: String, onto target: String?, below: Bool, poofAt point: NSPoint) -> Bool {
+        var result: DropResult?
+        guard update({ result = try $0.dropCard(id, to: column, onto: target, below: below, today: today) }),
+              let result else { return false }
+        if result.archived { (Poof() as PoofShowing).show(at: point) }
+        if result.priorityChanged {
+            let label = file.locate(id)?.card.priority?.label ?? "None"
+            AccessibilityNotification.Announcement("Priority changed to \(label)").post()
+        }
+        return true
+    }
 }
 
 /// The Dock's puff of smoke. NSAnimationEffect is deprecated (macOS 14) but still works and has no
@@ -91,11 +106,11 @@ private struct ColumnView: View {
             } else {
                 ScrollView(.vertical) {
                     VStack(spacing: 8) {
-                        ForEach(Array(column.tasks.enumerated()), id: \.element.id) { i, card in
+                        ForEach(displayOrder(column.tasks, today: model.today) { $0 }, id: \.id) { card in
                             CardView(card: card, column: column.name, columns: names, flashing: flashing == card.id) {
                                 move(card.id, $0, nil, $1)
                             } drop: { id, below in
-                                drop(id, at: below ? i + 1 : i)
+                                drop(id, onto: card.id, below: below)
                             }
                             .id(card.id)
                         }
@@ -113,7 +128,7 @@ private struct ColumnView: View {
                     in: RoundedRectangle(cornerRadius: 10))
         .dropDestination(for: String.self) { ids, _ in
             guard let id = ids.first else { return false }
-            return drop(id, at: nil)
+            return drop(id, onto: nil, below: false)
         } isTargeted: { targeted = $0 }
         .sheet(isPresented: $addingCard) {
             CardEditor(heading: "New Task in \(column.name)", button: "Add", title: "", notes: "") { title, notes in
@@ -171,18 +186,11 @@ private struct ColumnView: View {
 
     private var doneArea: some View { DoneArea() }
 
-    /// Moves a dragged card here, before the card at `target` (nil = at the end).
+    /// Moves a dragged card here, onto card `target` (nil = empty space), taking its priority.
     /// Only cards on this board are taken, so dropped text from other apps is ignored.
-    private func drop(_ id: String, at target: Int?) -> Bool {
+    private func drop(_ id: String, onto target: String?, below: Bool) -> Bool {
         guard board.columns.contains(where: { $0.tasks.contains { $0.id == id } }) else { return false }
-        var at = target
-        // moveCard takes the card out before inserting, so a card from higher up in this column shifts the target.
-        if let t = target, let from = column.tasks.firstIndex(where: { $0.id == id }) {
-            if from == t { return true }
-            if from < t { at = t - 1 }
-        }
-        move(id, column.name, at, NSEvent.mouseLocation)
-        return true
+        return model.drop(id, to: column.name, onto: target, below: below, poofAt: NSEvent.mouseLocation)
     }
 }
 
