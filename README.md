@@ -40,6 +40,74 @@ scripts/make-app.sh --install  # also copies the app to /Applications
 
 Make sure `~/.local/bin` is on your `PATH`.
 
+## Daily backup
+
+This script backs up both apps' data (`~/.config/frequent-finder`, `~/.config/openpmtools`) and their app preferences
+into one dated file, `pmtools-YYYY-MM-DD.tar.gz`, in a Dropbox folder. It deletes the backup from 30 days ago, but only
+once today's backup is written, so the newest backup always stays. If any step fails, it shows a macOS notification
+and the error goes to `/tmp/pmtools-backup.err`.
+
+Save it as `~/bin/pmtools-backup` and run `chmod +x ~/bin/pmtools-backup`:
+
+```bash
+#!/bin/bash
+# Daily backup of FrequentFinder and OpenPMTools data and app preferences. Keeps 30 days.
+set -euo pipefail
+trap 'osascript -e "display notification \"Line $LINENO failed. See /tmp/pmtools-backup.err\" with title \"PMTools backup failed\" sound name \"Basso\""' ERR
+dest="$HOME/Library/CloudStorage/Dropbox/PMTools-backups"
+backup="$dest/pmtools-$(date +%Y-%m-%d).tar.gz"
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+mkdir -p "$dest" "$tmp/preferences"
+cp -R "$HOME/.config/frequent-finder" "$HOME/.config/openpmtools" "$tmp/"
+for id in org.hyland-wood.FrequentFinder org.hyland-wood.OpenPMTools; do
+    defaults export "$id" "$tmp/preferences/$id.plist"
+done
+tar -czf "$backup" -C "$tmp" .
+# Delete the 30-day-old backup only when today's is there, so the newest backup always stays.
+# By name, not by listing: under launchd, macOS privacy rules block listing Dropbox folders.
+# ponytail: a day the Mac misses leaves one old file behind; delete it by hand.
+if [ -s "$backup" ]; then rm -f "$dest/pmtools-$(date -v-30d +%Y-%m-%d).tar.gz"; fi
+```
+
+To run it every day at 12:00, save this as `~/Library/LaunchAgents/org.hyland-wood.pmtools-backup.plist`, with your
+own home folder in the path:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>org.hyland-wood.pmtools-backup</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/YOU/bin/pmtools-backup</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>12</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <key>StandardErrorPath</key>
+    <string>/tmp/pmtools-backup.err</string>
+</dict>
+</plist>
+```
+
+Then load it, and run it once to test:
+
+```bash
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/org.hyland-wood.pmtools-backup.plist
+launchctl kickstart gui/$(id -u)/org.hyland-wood.pmtools-backup
+```
+
+If the Mac is asleep at 12:00, the backup runs when it wakes. macOS lets only the program that made a file in Dropbox
+change or delete it. So if you move the script, it cannot delete the old script's backups: delete those by hand.
+To get preferences back, quit the app and run `defaults import <bundle id> <file>.plist`.
+
 ## Command line
 
 ```
