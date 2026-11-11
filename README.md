@@ -51,8 +51,8 @@ Usage:
   pmt column rename <project> <name> <new>
   pmt column move <project> <name> <N>
   pmt column remove <project> <name>
-  pmt task add <project> <title> [--notes "..."] [--column <name>]
-  pmt task edit <id> [--title "..."] [--notes "..."]
+  pmt task add <project> <title> [--notes "..."] [--column <name>] [--due YYYY-MM-DD] [--priority low|medium|high]
+  pmt task edit <id> [--title "..."] [--notes "..."] [--due YYYY-MM-DD|none] [--priority low|medium|high|none]
   pmt task move <id> <column>
   pmt task done <id>
   pmt task delete <id>
