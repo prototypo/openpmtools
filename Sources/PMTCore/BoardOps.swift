@@ -171,8 +171,8 @@ extension BoardsFile {
                                   today: Day, now: Date = Date()) throws -> DropResult {
         let r = try findOpen(id)
         let dest = try columnIndex(column, in: r.board)
-        let old = boards[r.board].columns[r.column].tasks[r.index].priority
-        var priority = old
+        let card = boards[r.board].columns[r.column].tasks[r.index]
+        var priority = card.priority
         var at: Int?
         if let target, let t = locate(target), let tc = t.column {
             if t.card.id == boards[r.board].columns[r.column].tasks[r.index].id { return DropResult(archived: false, priorityChanged: false) }
@@ -186,7 +186,10 @@ extension BoardsFile {
         }
         boards[r.board].columns[r.column].tasks[r.index].priority = priority
         let archived = try moveCard(id, to: column, at: at, now: now)
-        return DropResult(archived: archived, priorityChanged: priority != old)
+        // Changed as the card shows it (a due date can already raise it), not as saved.
+        var after = card; after.priority = priority
+        return DropResult(archived: archived,
+                          priorityChanged: after.effectivePriority(today: today) != card.effectivePriority(today: today))
     }
 
     /// Returns true when the card was archived (moved to the last column).

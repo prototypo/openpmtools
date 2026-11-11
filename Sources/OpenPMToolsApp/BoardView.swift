@@ -60,7 +60,7 @@ extension AppModel {
               let result else { return false }
         if result.archived { (Poof() as PoofShowing).show(at: point) }
         if result.priorityChanged {
-            let label = file.locate(id)?.card.priority?.label ?? "None"
+            let label = file.locate(id)?.card.effectivePriority(today: today)?.label ?? "None"
             AccessibilityNotification.Announcement("Priority changed to \(label)").post()
         }
         return true

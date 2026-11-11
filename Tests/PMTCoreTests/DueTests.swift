@@ -79,3 +79,16 @@ private func card(_ id: String, _ p: Priority? = nil, due: String? = nil) -> Car
     #expect(Priority(argument: "HIGH") == .high && Priority(argument: "urgent") == nil)
     #expect(Priority.medium.symbol == "!" && Priority.high.label == "High")
 }
+
+@Test func dayRejectsNonASCIIDigits() {
+    #expect(Day("٢٠٢٦-١١-١٤") == nil)
+}
+
+@Test func todayIsAlwaysGregorian() {
+    var cal = Calendar(identifier: .japanese)
+    cal.timeZone = TimeZone(identifier: "Pacific/Auckland")!
+    let now = ISO8601DateFormatter().date(from: "2026-11-14T12:00:00Z")!
+    #expect(Day.today(now: now, calendar: cal).text == "2026-11-15")
+    let d = Day("2026-03-29")!
+    #expect(Day.today(now: d.localDate) == d)
+}

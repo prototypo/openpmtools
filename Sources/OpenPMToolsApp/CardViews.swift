@@ -123,11 +123,6 @@ struct CardDraft {
     var project: UUID?
 }
 
-extension Day {
-    /// Midnight of this day in the local time zone, for DatePicker.
-    var localDate: Date { Calendar.current.date(from: DateComponents(year: year, month: month, day: day))! }
-}
-
 /// Title, notes, due date and priority for a new or existing card; a Project menu when `projects` is given.
 /// `save` returns false on failure; the error then shows here.
 struct CardEditor: View {

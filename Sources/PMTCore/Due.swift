@@ -14,7 +14,7 @@ public struct Day: Codable, Hashable, Comparable, Sendable {
 
     /// Strict: "2026-11-14" only, and a real date.
     public init?(_ text: String) {
-        guard text.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil else { return nil }
+        guard text.range(of: #"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"#, options: .regularExpression) != nil else { return nil }
         let n = text.split(separator: "-").map { Int($0)! }
         let c = DateComponents(year: n[0], month: n[1], day: n[2])
         guard let date = Day.utc.date(from: c),
@@ -24,10 +24,20 @@ public struct Day: Codable, Hashable, Comparable, Sendable {
 
     public var text: String { String(format: "%04d-%02d-%02d", year, month, day) }
 
-    /// The local calendar day at `now`.
-    public static func today(now: Date = Date(), calendar: Calendar = .current) -> Day {
-        Day(calendar.dateComponents([.year, .month, .day], from: now))
+    /// Gregorian, in the local time zone: days are always Gregorian, whatever calendar the Mac uses.
+    private static func local(_ timeZone: TimeZone) -> Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = timeZone
+        return c
     }
+
+    /// The local day at `now`. Only `calendar`'s time zone is used.
+    public static func today(now: Date = Date(), calendar: Calendar = .current) -> Day {
+        Day(local(calendar.timeZone).dateComponents([.year, .month, .day], from: now))
+    }
+
+    /// Midnight of this day in the local time zone, for a date picker.
+    public var localDate: Date { Day.local(.current).date(from: DateComponents(year: year, month: month, day: day))! }
 
     private var date: Date { Day.utc.date(from: DateComponents(year: year, month: month, day: day))! }
 

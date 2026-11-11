@@ -217,3 +217,10 @@ private func ids(_ f: BoardsFile, _ col: Int, board: UUID = p) -> [String] { f.b
     try f.addCard(project: q, title: "H", priority: .high)
     #expect(f.bigBoard(today: today)[0].cards.map(\.card.title) == ["H", "N2", "N1"])
 }
+
+@Test func dropReportsShownPriorityChange() throws {
+    var f = try board3()
+    let target = try f.addCard(project: p, title: "T")
+    let a = try f.addCard(project: p, title: "A", due: today, priority: .low)  // set Low, shows High (due today)
+    #expect(try f.dropCard(a, to: "To Do", onto: target, below: false, today: today).priorityChanged == false)
+}
