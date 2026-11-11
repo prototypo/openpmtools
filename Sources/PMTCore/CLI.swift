@@ -17,8 +17,8 @@ public enum PMTCLI {
       pmt column rename <project> <name> <new>
       pmt column move <project> <name> <N>
       pmt column remove <project> <name>
-      pmt task add <project> <title> [--notes "..."] [--column <name>]
-      pmt task edit <id> [--title "..."] [--notes "..."]
+      pmt task add <project> <title> [--notes "..."] [--column <name>] [--due YYYY-MM-DD] [--priority low|medium|high]
+      pmt task edit <id> [--title "..."] [--notes "..."] [--due YYYY-MM-DD|none] [--priority low|medium|high|none]
       pmt task move <id> <column>
       pmt task done <id>
       pmt task delete <id>
@@ -39,6 +39,18 @@ public enum PMTCLI {
         let title = try takeOption("--title", from: &args)
         let column = try takeOption("--column", from: &args)
         let atText = try takeOption("--at", from: &args)
+        // nil: not given; .some(nil): "none" (clear).
+        let due = try takeOption("--due", from: &args).map { (s: String) throws -> Day? in
+            if s.lowercased() == "none" { return nil }
+            guard let d = Day(s) else { throw PMTError.badDue(s) }
+            return d
+        }
+        let priority = try takeOption("--priority", from: &args).map { (s: String) throws -> Priority? in
+            if s.lowercased() == "none" { return nil }
+            guard let p = Priority(argument: s) else { throw PMTError.badPriority(s) }
+            return p
+        }
+        let today = Day.today(now: now)
         let at = try atText.map { (s: String) throws -> Int in
             guard let n = Int(s), n >= 1 else { throw PMTError.usage(usage) }
             return n - 1
@@ -136,11 +148,24 @@ public enum PMTCLI {
                 if json {
                     return try render(["project": p.name, "columns": b.columns.enumerated().map { i, col in
                         ["name": col.name, "done": i == b.columns.count - 1,
-                         "tasks": col.tasks.map { ["id": $0.id, "title": $0.title, "notes": $0.notes ?? ""] }] as [String: Any]
+                         "tasks": displayOrder(col.tasks, today: today) { $0 }.map { t in
+                             var o: [String: Any] = ["id": t.id, "title": t.title, "notes": t.notes ?? ""]
+                             o["due"] = t.due?.text
+                             o["priority"] = t.priority?.rawValue
+                             o["effectivePriority"] = t.effectivePriority(today: today)?.rawValue
+                             return o
+                         }] as [String: Any]
                     }] as [String: Any])
                 }
                 return b.columns.enumerated().map { i, col in
-                    ([col.name + (i == b.columns.count - 1 ? " (done)" : "")] + col.tasks.map { "  \($0.id)  \($0.title)" })
+                    ([col.name + (i == b.columns.count - 1 ? " (done)" : "")] + displayOrder(col.tasks, today: today) { $0 }.map { t in
+                        var line = "  \(t.id)  \(t.title)"
+                        if let p = t.effectivePriority(today: today) {
+                            line += "  [\(p.symbol) \(p.label)\(t.isRaised(today: today) ? ", raised" : "")]"
+                        }
+                        if let d = t.due { line += "  [due \(d.text)]" }
+                        return line
+                    })
                         .joined(separator: "\n")
                 }.joined(separator: "\n")
             }
@@ -169,10 +194,16 @@ public enum PMTCLI {
             case ("add", 2):
                 return try edit { f, c in
                     let p = try c.resolve(r[0]).id
-                    return try f.addCard(project: p, title: r[1], notes: notes, column: column, now: now)
+                    return try f.addCard(project: p, title: r[1], notes: notes, column: column,
+                                         due: due ?? nil, priority: priority ?? nil, now: now)
                 }
             case ("edit", 1):
-                return try edit { f, _ in try f.editCard(r[0], title: title, notes: notes); return "" }
+                return try edit { f, _ in
+                    try f.editCard(r[0], title: title, notes: notes)
+                    if let due { try f.setDue(r[0], due) }
+                    if let priority { try f.setPriority(r[0], priority) }
+                    return ""
+                }
             case ("move", 2):
                 return try edit { f, _ in try f.moveCard(r[0], to: r[1], at: at, now: now) ? "Archived \(r[0])" : "" }
             case ("done", 1):
@@ -189,6 +220,10 @@ public enum PMTCLI {
                 let l = try show(r[0], f)
                 let col = l.column ?? "Done " + ISO8601DateFormatter().string(from: l.done ?? now)
                 var s = "id: \(l.card.id)\ntitle: \(l.card.title)\nproject: \(projectName(catalog(f), l.project))\ncolumn: \(col)"
+                if let d = l.card.due { s += "\ndue: \(d.text)" }
+                if let p = l.card.effectivePriority(today: today) {
+                    s += "\npriority: \(p.label)" + (l.card.isRaised(today: today) ? " (raised: due soon)" : "")
+                }
                 if let n = l.card.notes { s += "\n\n" + n }
                 return s
             default: throw PMTError.usage(usage)

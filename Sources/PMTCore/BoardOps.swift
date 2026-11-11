@@ -42,7 +42,7 @@ extension BoardsFile {
     /// Like `find`, but open cards only.
     private func findOpen(_ id: String) throws -> (board: Int, column: Int, index: Int) {
         let r = try find(id)
-        guard let c = r.column else { throw PMTError.noSuchTask(trimmed(id)) }
+        guard let c = r.column else { throw PMTError.taskDone(trimmed(id)) }
         return (r.board, c, r.index)
     }
 
@@ -126,7 +126,7 @@ extension BoardsFile {
 
     @discardableResult
     public mutating func addCard(project: UUID, title: String, notes: String? = nil, column: String? = nil,
-                                 now: Date = Date()) throws -> String {
+                                 due: Day? = nil, priority: Priority? = nil, now: Date = Date()) throws -> String {
         let b = try boardIndex(project)
         let c = try column.map { try columnIndex($0, in: b) } ?? 0
         if c == boards[b].columns.count - 1 { throw PMTError.doneColumn }
@@ -134,7 +134,8 @@ extension BoardsFile {
         if t.isEmpty { throw PMTError.emptyTitle }
         let n = notes.map(trimmed).flatMap { $0.isEmpty ? nil : $0 }
         let id = newCardID()
-        boards[b].columns[c].tasks.append(Card(id: id, title: t, notes: n, created: now))
+        // First in saved order, so it shows at the top of its priority group.
+        boards[b].columns[c].tasks.insert(Card(id: id, title: t, notes: n, created: now, due: due, priority: priority), at: 0)
         return id
     }
 
@@ -150,6 +151,45 @@ extension BoardsFile {
             let n = trimmed(notes)
             boards[r.board].columns[r.column].tasks[r.index].notes = n.isEmpty ? nil : n
         }
+    }
+
+    public mutating func setDue(_ id: String, _ due: Day?) throws {
+        let r = try findOpen(id)
+        boards[r.board].columns[r.column].tasks[r.index].due = due
+    }
+
+    public mutating func setPriority(_ id: String, _ priority: Priority?) throws {
+        let r = try findOpen(id)
+        boards[r.board].columns[r.column].tasks[r.index].priority = priority
+    }
+
+    /// A dragged card dropped in `column` (on its own board). Dropped on card `target`, it takes that card's
+    /// effective priority and goes just before it (after it when `below`) if they share the column; otherwise last.
+    /// Dropped on empty space (`target` nil), its priority is kept and it goes last. The last column archives.
+    @discardableResult
+    public mutating func dropCard(_ id: String, to column: String, onto target: String?, below: Bool,
+                                  today: Day, now: Date = Date()) throws -> DropResult {
+        let r = try findOpen(id)
+        let dest = try columnIndex(column, in: r.board)
+        let card = boards[r.board].columns[r.column].tasks[r.index]
+        var priority = card.priority
+        var at: Int?
+        if let target, let t = locate(target), let tc = t.column {
+            if t.card.id == boards[r.board].columns[r.column].tasks[r.index].id { return DropResult(archived: false, priorityChanged: false) }
+            priority = t.card.effectivePriority(today: today)
+            if t.project == boards[r.board].project, same(tc, boards[r.board].columns[dest].name),
+               var i = boards[r.board].columns[dest].tasks.firstIndex(where: { $0.id == t.card.id }) {
+                if below { i += 1 }
+                if r.column == dest && r.index < i { i -= 1 }
+                at = i
+            }
+        }
+        boards[r.board].columns[r.column].tasks[r.index].priority = priority
+        let archived = try moveCard(id, to: column, at: at, now: now)
+        // Changed as the card shows it (a due date can already raise it), not as saved.
+        var after = card; after.priority = priority
+        return DropResult(archived: archived,
+                          priorityChanged: after.effectivePriority(today: today) != card.effectivePriority(today: today))
     }
 
     /// Returns true when the card was archived (moved to the last column).
@@ -183,10 +223,16 @@ extension BoardsFile {
     }
 }
 
+public struct DropResult: Equatable, Sendable {
+    public var archived: Bool
+    public var priorityChanged: Bool
+    public init(archived: Bool, priorityChanged: Bool) { self.archived = archived; self.priorityChanged = priorityChanged }
+}
+
 /// One column of the Big Board: every board's column with this name (case-insensitive).
 public struct BigColumn: Hashable, Sendable {
     public var name: String
-    /// Open cards, board by board, each in its board's order.
+    /// Open cards in display order (priority, due date), then board by board, each in its board's order.
     public var cards: [CardLocation]
     /// True when this is some board's last (Done) column.
     public var isDone: Bool
@@ -197,7 +243,7 @@ public struct BigColumn: Hashable, Sendable {
 extension BoardsFile {
     /// All boards' columns merged by name. Each board's column order is kept:
     /// a name not seen yet goes just after that board's previous column. Done columns go last.
-    public func bigBoard() -> [BigColumn] {
+    public func bigBoard(today: Day) -> [BigColumn] {
         var cols: [BigColumn] = []
         for b in boards {
             var at = 0
@@ -214,6 +260,7 @@ extension BoardsFile {
                 at = i + 1
             }
         }
+        for i in cols.indices { cols[i].cards = displayOrder(cols[i].cards, today: today) { $0.card } }
         return cols.filter { !$0.isDone } + cols.filter(\.isDone)
     }
 }

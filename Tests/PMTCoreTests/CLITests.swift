@@ -15,6 +15,46 @@ struct CLITests {
     @discardableResult
     func pmt(_ args: String...) throws -> String { try PMTCLI.run(args, store: store, ffStore: ffStore) }
 
+    /// 2026-11-14 at noon, local time.
+    static let noon = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 14, hour: 12))!
+
+    @discardableResult
+    func pmtNoon(_ args: String...) throws -> String { try PMTCLI.run(args, store: store, ffStore: ffStore, now: Self.noon) }
+
+    @Test func cliDueAndPriority() throws {
+        try pmt("project", "add", "P"); try pmt("board", "create", "P", "To Do", "Done")
+        let id = try pmtNoon("task", "add", "P", "T", "--due", "2026-11-15", "--priority", "low")
+        #expect(try pmtNoon("board", "P") == "To Do\n  \(id)  T  [! Medium, raised]  [due 2026-11-15]\nDone (done)")
+        try pmtNoon("task", "edit", id, "--due", "none", "--priority", "NONE")
+        #expect(try pmtNoon("board", "P") == "To Do\n  \(id)  T\nDone (done)")
+        try pmtNoon("task", "edit", id, "--priority", "high")
+        #expect(try pmtNoon("board", "P") == "To Do\n  \(id)  T  [!! High]\nDone (done)")
+    }
+
+    @Test func cliBadDueAndPriority() throws {
+        try pmt("project", "add", "P"); try pmt("board", "create", "P", "To Do", "Done")
+        #expect(throws: PMTError.badDue("15/11/2026")) { try pmt("task", "add", "P", "T", "--due", "15/11/2026") }
+        #expect(throws: PMTError.badPriority("urgent")) { try pmt("task", "add", "P", "T", "--priority", "urgent") }
+    }
+
+    @Test func cliShowsDueInShowAndJSON() throws {
+        try pmt("project", "add", "P"); try pmt("board", "create", "P", "To Do", "Done")
+        let id = try pmtNoon("task", "add", "P", "T", "--due", "2026-11-15")
+        let show = try pmtNoon("task", "show", id)
+        #expect(show.contains("due: 2026-11-15") && show.contains("priority: Medium (raised: due soon)"))
+        let json = try pmtNoon("board", "P", "--json")
+        #expect(json.contains(#""effectivePriority" : "medium""#) && json.contains(#""due" : "2026-11-15""#))
+    }
+
+    @Test func cliDoneTaskShowsCurrentPriorityAndRefusesEdit() throws {
+        try pmt("project", "add", "P"); try pmt("board", "create", "P", "To Do", "Done")
+        let id = try pmtNoon("task", "add", "P", "T", "--due", "2026-11-14", "--priority", "low")
+        try pmtNoon("task", "done", id)
+        #expect(try pmtNoon("task", "show", id).contains("priority: High (raised: due soon)"))
+        #expect(throws: PMTError.taskDone(id)) { try pmtNoon("task", "edit", id, "--priority", "high") }
+        #expect("\(PMTError.taskDone(id))" == "Task \(id) is done already. To change it, restore it first: pmt task restore \(id)")
+    }
+
     @Test func cliEndToEnd() throws {
         try pmt("project", "add", "Breakthrough")
         try pmt("board", "create", "breakthrough", "To Do", "Doing", "Done")

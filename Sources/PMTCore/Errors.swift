@@ -18,6 +18,9 @@ public enum PMTError: Error, Equatable, CustomStringConvertible, LocalizedError 
     case noSuchTask(String)
     case emptyTitle
     case noSuchBoard(String)
+    case taskDone(String)
+    case badDue(String)
+    case badPriority(String)
 
     public var description: String {
         switch self {
@@ -38,6 +41,9 @@ public enum PMTError: Error, Equatable, CustomStringConvertible, LocalizedError 
         case .noSuchTask(let id): "No task '\(id)'."
         case .emptyTitle: "Task title cannot be empty."
         case .noSuchBoard(let name): "No board for '\(name)'."
+        case .taskDone(let id): "Task \(id) is done already. To change it, restore it first: pmt task restore \(id)"
+        case .badDue(let text): "Due date must look like 2026-11-14 (got '\(text)')."
+        case .badPriority(let text): "Priority must be low, medium, high or none (got '\(text)')."
         }
     }
 

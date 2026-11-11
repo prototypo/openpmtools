@@ -41,6 +41,8 @@ final class AppModel {
     var offSidebar: UUID?
     /// A card for the shown board to scroll to and flash.
     var highlight: (project: UUID, card: String)?
+    /// The local day, for due-date colours and raised priorities. Updates at midnight and when the app comes back.
+    private(set) var today = Day.today()
     /// The card being dragged, so the Big Board can grey out columns it cannot go to.
     /// SwiftUI reports no drag end, so this clears itself once the mouse button is up.
     // ponytail: polls the mouse button 5 times a second until it is up; use an NSDraggingSource if that ever misses.
@@ -75,6 +77,14 @@ final class AppModel {
         }
         NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshAllGit() }
+        }
+        for name in [Notification.Name.NSCalendarDayChanged, NSApplication.didBecomeActiveNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    let day = Day.today()
+                    if self?.today != day { self?.today = day }
+                }
+            }
         }
     }
 
