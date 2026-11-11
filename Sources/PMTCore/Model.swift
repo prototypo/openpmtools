@@ -11,8 +11,11 @@ public struct Card: Codable, Hashable, Sendable {
     public var title: String
     public var notes: String?
     public var created: Date
-    public init(id: String, title: String, notes: String? = nil, created: Date) {
+    public var due: Day?
+    public var priority: Priority?
+    public init(id: String, title: String, notes: String? = nil, created: Date, due: Day? = nil, priority: Priority? = nil) {
         self.id = id; self.title = title; self.notes = notes; self.created = created
+        self.due = due; self.priority = priority
     }
 }
 
@@ -23,13 +26,16 @@ public struct ArchivedCard: Codable, Hashable, Sendable {
     public var created: Date
     public var done: Date
     public var fromColumn: String
+    public var due: Day?
+    public var priority: Priority?
 
     public init(_ card: Card, fromColumn: String, done: Date) {
         id = card.id; title = card.title; notes = card.notes; created = card.created
+        due = card.due; priority = card.priority
         self.done = done; self.fromColumn = fromColumn
     }
 
-    public var card: Card { Card(id: id, title: title, notes: notes, created: created) }
+    public var card: Card { Card(id: id, title: title, notes: notes, created: created, due: due, priority: priority) }
 }
 
 public struct Column: Codable, Hashable, Sendable {
