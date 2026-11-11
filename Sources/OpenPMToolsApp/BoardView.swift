@@ -131,8 +131,10 @@ private struct ColumnView: View {
             return drop(id, onto: nil, below: false)
         } isTargeted: { targeted = $0 }
         .sheet(isPresented: $addingCard) {
-            CardEditor(heading: "New Task in \(column.name)", button: "Add", title: "", notes: "") { title, notes in
-                model.update { try $0.addCard(project: project, title: title, notes: notes, column: column.name) }
+            CardEditor(heading: "New Task in \(column.name)", button: "Add", draft: CardDraft()) { d in
+                model.update {
+                    try $0.addCard(project: project, title: d.title, notes: d.notes, column: column.name, due: d.due, priority: d.priority)
+                }
             }
         }
         .sheet(isPresented: $renaming) {

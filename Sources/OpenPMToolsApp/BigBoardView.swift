@@ -6,8 +6,29 @@ import SwiftUI
 /// A card can only go to a column its own board has.
 struct BigBoardView: View {
     @Environment(AppModel.self) private var model
+    @State private var addingTask = false
+    @AppStorage("lastNewTaskProject") private var lastProject: String?
 
     var body: some View {
+        content
+            .focusedSceneValue(\.newTask, model.file.boards.isEmpty ? nil : NewTaskAction { addingTask = true })
+            .sheet(isPresented: $addingTask) {
+                let projects = model.file.boards.map {
+                    model.catalog.entry(for: $0.project) ?? ProjectEntry(id: $0.project, name: "(orphaned board)", ff: nil)
+                }
+                let last = lastProject.flatMap(UUID.init(uuidString:))
+                let start = projects.contains { $0.id == last } ? last : projects.first?.id
+                CardEditor(heading: "New Task", button: "Add", draft: CardDraft(project: start), projects: projects) { d in
+                    guard let p = d.project,
+                          model.update({ try $0.addCard(project: p, title: d.title, notes: d.notes, due: d.due, priority: d.priority) })
+                    else { return false }
+                    lastProject = p.uuidString
+                    return true
+                }
+            }
+    }
+
+    @ViewBuilder private var content: some View {
         if let message = model.loadError {
             ContentUnavailableView("Cannot read boards.json", systemImage: "exclamationmark.triangle", description: Text(message))
         } else if model.file.boards.isEmpty {

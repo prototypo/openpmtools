@@ -18,11 +18,7 @@ struct OpenPMToolsApp: App {
         // Project links open here (ContentView.onOpenURL), never in Big Board.
         .handlesExternalEvents(matching: ["project"])
         .commands {
-            CommandGroup(replacing: .newItem) {
-                Button("New Project…") { model.addingProject = true }
-                    .keyboardShortcut("n")
-                    .disabled(model.loadError != nil)
-            }
+            NewItemCommands(model: model)
             // SwiftUI's toolbar search field does not take ⌘F by itself.
             CommandGroup(after: .textEditing) {
                 Menu("Find") {
@@ -52,6 +48,7 @@ struct ContentView: View {
     @AppStorage("selection") private var storedSelection: String?
     @FocusState private var searchFocused: Bool
     @Environment(\.openWindow) private var openWindow
+    @State private var addingTask = false
 
     var body: some View {
         @Bindable var model = model
@@ -103,6 +100,14 @@ struct ContentView: View {
             Text("Include Done").tag(true)
         }
         .frame(minWidth: 760, minHeight: 480)
+        .focusedSceneValue(\.newTask, newTaskProject.map { _ in NewTaskAction { addingTask = true } })
+        .sheet(isPresented: $addingTask) {
+            if let id = newTaskProject, let first = model.file.board(for: id)?.columns.first?.name {
+                CardEditor(heading: "New Task in \(first)", button: "Add", draft: CardDraft()) { d in
+                    model.update { try $0.addCard(project: id, title: d.title, notes: d.notes, due: d.due, priority: d.priority) }
+                }
+            }
+        }
         // Saves and restores the window's size and place across runs.
         .background(WindowReader { $0.setFrameAutosaveName("Main") })
         // A link that opened this window has already chosen a project; keep it.
@@ -123,6 +128,14 @@ struct ContentView: View {
                 if model.highlight?.project != s { model.highlight = nil }
             }
         }
+    }
+}
+
+extension ContentView {
+    /// The shown project, when it has a board: where ⌘N puts a new task.
+    private var newTaskProject: UUID? {
+        guard let id = model.selection ?? model.offSidebar, model.file.board(for: id) != nil else { return nil }
+        return id
     }
 }
 

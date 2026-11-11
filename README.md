@@ -12,6 +12,13 @@ Linked Apps (Settings, ⌘,): drop an app from Finder or the Dock, or click Add 
 menu then have "Open in <app>". An app can be linked when it opens links of the form `<scheme>://project/<project id>`;
 its scheme is read from the app. OpenPMTools opens `openpmtools://project/<project id>` itself, so FrequentFinder (and
 `open` in Terminal) can link to a board.
+Tasks can have a due date and a priority (Low, Medium, High), set in the task editor or with `pmt`. A near due date
+raises the priority shown (due today or overdue: High; within 2 days: Medium) without changing what you set. A stripe
+along the top of the card and a date label show how near it is: red (today or overdue), yellow (within 2 days), green;
+the label also has a symbol and words ("Overdue · 12 Nov", "Today", "Tomorrow"), so colour is never the only signal.
+Cards sort by priority, then due date, then your own order. Dropping a card onto another card gives it that card's
+priority. ⌘N adds a task to the top of the shown project's first column (on the Big Board it asks which project);
+⇧⌘N adds a project.
 
 ![A board with To Do, Doing, Waiting and Done columns](docs/images/board.png)
 

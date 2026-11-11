@@ -77,8 +77,13 @@ struct CardView: View {
             Button("Delete…", role: .destructive) { deleting = true }
         }
         .sheet(isPresented: $editing) {
-            CardEditor(heading: "Edit Task", button: "Save", title: card.title, notes: card.notes ?? "") { title, notes in
-                model.update { try $0.editCard(card.id, title: title, notes: notes) }
+            CardEditor(heading: "Edit Task", button: "Save",
+                       draft: CardDraft(title: card.title, notes: card.notes ?? "", due: card.due, priority: card.priority)) { d in
+                model.update {
+                    try $0.editCard(card.id, title: d.title, notes: d.notes)
+                    try $0.setDue(card.id, d.due)
+                    try $0.setPriority(card.id, d.priority)
+                }
             }
         }
         .confirmationDialog("Delete “\(card.title)”?", isPresented: $deleting) {
@@ -109,29 +114,63 @@ struct CardView: View {
     }
 }
 
-/// Title and notes for a new or existing card. `save` returns false on failure; the error then shows here.
+/// What the task editor fills in. `project` is used only when the editor shows a Project menu.
+struct CardDraft {
+    var title = ""
+    var notes = ""
+    var due: Day?
+    var priority: Priority?
+    var project: UUID?
+}
+
+extension Day {
+    /// Midnight of this day in the local time zone, for DatePicker.
+    var localDate: Date { Calendar.current.date(from: DateComponents(year: year, month: month, day: day))! }
+}
+
+/// Title, notes, due date and priority for a new or existing card; a Project menu when `projects` is given.
+/// `save` returns false on failure; the error then shows here.
 struct CardEditor: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let heading: String
     let button: String
-    @State var title: String
-    @State var notes: String
-    let save: (String, String) -> Bool
-    @State var failure: String?
+    @State var draft: CardDraft
+    var projects: [ProjectEntry]? = nil
+    let save: (CardDraft) -> Bool
+    @State private var failure: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(heading).font(.headline)
-            TextField("Title", text: $title)
+            if let projects {
+                Picker("Project", selection: $draft.project) {
+                    ForEach(projects) { Text($0.name).tag(Optional($0.id)) }
+                }
+            }
+            TextField("Title", text: $draft.title)
             Text("Notes").foregroundStyle(.secondary)
-            TextEditor(text: $notes)
+            TextEditor(text: $draft.notes)
                 .font(.body)
                 .frame(height: 120)
                 .scrollContentBackground(.hidden)
                 .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 4))
                 .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(.separator))
                 .accessibilityLabel("Notes")
+            HStack {
+                Toggle("Due date", isOn: Binding(get: { draft.due != nil },
+                                                 set: { draft.due = $0 ? (draft.due ?? model.today) : nil }))
+                if let due = draft.due {
+                    DatePicker("Due date", selection: Binding(get: { due.localDate },
+                                                              set: { draft.due = Day.today(now: $0) }),
+                               displayedComponents: .date)
+                        .labelsHidden()
+                }
+            }
+            Picker("Priority", selection: $draft.priority) {
+                Text("None").tag(Priority?.none)
+                ForEach(Priority.allCases, id: \.self) { Text($0.label).tag(Optional($0)) }
+            }
             if let failure {
                 Text(failure).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
             }
@@ -139,7 +178,7 @@ struct CardEditor: View {
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(button) {
-                    if save(title, notes) {
+                    if save(draft) {
                         dismiss()
                     } else {
                         failure = model.loadError ?? model.error
@@ -147,11 +186,35 @@ struct CardEditor: View {
                     }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(draft.title.trimmingCharacters(in: .whitespaces).isEmpty || (projects != nil && draft.project == nil))
             }
         }
         .padding(20)
         .frame(width: 380)
+    }
+}
+
+/// File > New Task… (⌘N) runs this. A window offers it only when it has somewhere to put the task.
+struct NewTaskAction { let run: () -> Void }
+
+extension FocusedValues {
+    @Entry var newTask: NewTaskAction?
+}
+
+/// File menu: New Task… (⌘N) for the focused window, New Project… (⇧⌘N).
+struct NewItemCommands: Commands {
+    let model: AppModel
+    @FocusedValue(\.newTask) private var newTask
+
+    var body: some Commands {
+        CommandGroup(replacing: .newItem) {
+            Button("New Task…") { newTask?.run() }
+                .keyboardShortcut("n")
+                .disabled(newTask == nil || model.loadError != nil)
+            Button("New Project…") { model.addingProject = true }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+                .disabled(model.loadError != nil)
+        }
     }
 }
 
