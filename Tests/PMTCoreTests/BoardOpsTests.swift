@@ -36,10 +36,10 @@ private let t = Date(timeIntervalSince1970: 1_800_000_000)
     var f = BoardsFile(); try f.createBoard(project: p, columns: ["A", "Done"])
     let x = try f.addCard(project: p, title: "x"), y = try f.addCard(project: p, title: "y")
     let before = f
-    _ = try f.moveCard(y, to: "A")
+    _ = try f.moveCard(x, to: "A")  // new cards go first, so x is last
     #expect(f == before)
-    _ = try f.moveCard(y, to: "A", at: 0)
-    #expect(f.board(for: p)!.columns[0].tasks.map(\.id) == [y, x])
+    _ = try f.moveCard(x, to: "A", at: 0)
+    #expect(f.board(for: p)!.columns[0].tasks.map(\.id) == [x, y])
 }
 
 @Test func cardIDsGrowOnClash() throws {
@@ -119,9 +119,101 @@ private let t = Date(timeIntervalSince1970: 1_800_000_000)
     try f.createBoard(project: q, columns: ["Backlog", "to do", "Review", "Shipped"])
     let a = try f.addCard(project: p, title: "a"), b = try f.addCard(project: q, title: "b", column: "To Do")
     _ = try f.moveCard(try f.addCard(project: q, title: "c"), to: "Shipped")
-    let big = f.bigBoard()
+    let big = f.bigBoard(today: today)
     #expect(big.map(\.name) == ["Backlog", "To Do", "Review", "Doing", "Shipped", "Done"])
     #expect(big[1].cards.map(\.card.id) == [a, b] && big[1].cards.map(\.project) == [p, q])
     #expect(big.filter(\.isDone).map(\.name) == ["Shipped", "Done"])
     #expect(big[4].archived == 1 && big[5].archived == 0)
+}
+
+// MARK: due dates, priorities, drops
+
+private let today = Day("2026-11-14")!
+
+private func board3() throws -> BoardsFile {
+    var f = BoardsFile(); try f.createBoard(project: p, columns: ["To Do", "Doing", "Done"]); return f
+}
+
+private func ids(_ f: BoardsFile, _ col: Int, board: UUID = p) -> [String] { f.board(for: board)!.columns[col].tasks.map(\.title) }
+
+@Test func newCardsGoFirst() throws {
+    var f = try board3()
+    try f.addCard(project: p, title: "A"); try f.addCard(project: p, title: "B")
+    #expect(ids(f, 0) == ["B", "A"])
+}
+
+@Test func setDueAndPriority() throws {
+    var f = try board3()
+    let id = try f.addCard(project: p, title: "A", due: Day("2026-11-20"), priority: .low)
+    try f.setDue(id, Day("2026-11-21")); try f.setPriority(id, .high)
+    #expect(f.locate(id)?.card.due == Day("2026-11-21") && f.locate(id)?.card.priority == .high)
+    try f.setDue(id, nil); try f.setPriority(id, nil)
+    #expect(f.locate(id)?.card.due == nil && f.locate(id)?.card.priority == nil)
+    try f.moveCard(id, to: "Done")
+    #expect(throws: PMTError.noSuchTask(id)) { try f.setDue(id, today) }
+    #expect(throws: PMTError.noSuchTask(id)) { try f.setPriority(id, .low) }
+}
+
+@Test func dropTakesTargetsEffectivePriority() throws {
+    var f = try board3()
+    let target = try f.addCard(project: p, title: "T", due: today)
+    let a = try f.addCard(project: p, title: "A")
+    #expect(try f.dropCard(a, to: "To Do", onto: target, below: false, today: today) == DropResult(archived: false, priorityChanged: true))
+    #expect(f.locate(a)?.card.priority == .high && f.locate(a)?.card.due == nil)
+}
+
+@Test func dropOnEmptySpaceKeepsPriority() throws {
+    var f = try board3()
+    try f.addCard(project: p, title: "X", column: "Doing")
+    let a = try f.addCard(project: p, title: "A", priority: .low)
+    #expect(try f.dropCard(a, to: "doing", onto: nil, below: false, today: today) == DropResult(archived: false, priorityChanged: false))
+    #expect(ids(f, 1) == ["X", "A"] && f.locate(a)?.card.priority == .low)
+}
+
+@Test func dropOnSelfIsNoChange() throws {
+    var f = try board3()
+    try f.addCard(project: p, title: "B")
+    let a = try f.addCard(project: p, title: "A")
+    let before = f
+    #expect(try f.dropCard(a, to: "To Do", onto: a, below: true, today: today) == DropResult(archived: false, priorityChanged: false))
+    #expect(f == before)
+}
+
+@Test func dropBelowNextCard() throws {
+    var f = try board3()
+    let c = try f.addCard(project: p, title: "C"), b = try f.addCard(project: p, title: "B"), a = try f.addCard(project: p, title: "A")
+    #expect(ids(f, 0) == ["A", "B", "C"])
+    try f.dropCard(a, to: "To Do", onto: b, below: true, today: today)
+    #expect(ids(f, 0) == ["B", "A", "C"])
+    try f.dropCard(c, to: "To Do", onto: b, below: false, today: today)
+    #expect(ids(f, 0) == ["C", "B", "A"])
+    try f.dropCard(b, to: "To Do", onto: a, below: true, today: today)
+    #expect(ids(f, 0) == ["C", "A", "B"])
+}
+
+@Test func dropOntoOtherBoardsCard() throws {
+    var f = try board3()
+    let q = UUID(); try f.createBoard(project: q, columns: ["To Do", "Doing", "Done"])
+    try f.addCard(project: p, title: "X", column: "Doing")
+    let a = try f.addCard(project: p, title: "A")
+    let h = try f.addCard(project: q, title: "H", column: "Doing", priority: .high)
+    try f.dropCard(a, to: "Doing", onto: h, below: false, today: today)
+    #expect(ids(f, 1) == ["X", "A"] && ids(f, 1, board: q) == ["H"] && f.locate(a)?.card.priority == .high)
+}
+
+@Test func dropIntoDoneArchives() throws {
+    var f = try board3()
+    let a = try f.addCard(project: p, title: "A", due: today, priority: .low)
+    #expect(try f.dropCard(a, to: "Done", onto: nil, below: false, today: today).archived)
+    #expect(f.board(for: p)!.archive.first?.due == today && f.board(for: p)!.archive.first?.priority == .low)
+    try f.restoreCard(a)
+    #expect(f.locate(a)?.card.due == today && f.locate(a)?.card.priority == .low)
+}
+
+@Test func bigBoardSortsByPriority() throws {
+    var f = try board3()
+    let q = UUID(); try f.createBoard(project: q, columns: ["To Do", "Done"])
+    try f.addCard(project: p, title: "N1"); try f.addCard(project: p, title: "N2")
+    try f.addCard(project: q, title: "H", priority: .high)
+    #expect(f.bigBoard(today: today)[0].cards.map(\.card.title) == ["H", "N2", "N1"])
 }

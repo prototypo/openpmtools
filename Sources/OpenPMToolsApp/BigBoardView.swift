@@ -15,7 +15,7 @@ struct BigBoardView: View {
         } else {
             ScrollView(.horizontal) {
                 HStack(alignment: .top, spacing: 12) {
-                    ForEach(model.file.bigBoard(), id: \.name) { BigColumnView(column: $0) }
+                    ForEach(model.file.bigBoard(today: Day.today()), id: \.name) { BigColumnView(column: $0) }
                 }
                 .padding(12)
                 .frame(maxHeight: .infinity, alignment: .top)
