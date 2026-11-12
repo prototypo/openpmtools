@@ -363,7 +363,7 @@ private func withABC(_ base: BoardsFile, _ title: String, _ s: Double, _ d: Devi
 }
 
 private func suffix(_ s: Double, plus n: Int = 0) -> String {
-    String(format: "-%04x", (Int((t + s).timeIntervalSince1970) & 0xffff) + n)
+    String(format: "-%04lx", (Int((t + s).timeIntervalSince1970) & 0xffff) + n)
 }
 
 @Test func collisionThenDeleteKeepsOtherCard() throws {
@@ -424,4 +424,55 @@ private func suffix(_ s: Double, plus n: Int = 0) -> String {
     #expect(m.locate("abc123")?.card.title == "X")
     #expect(m.locate("abc123" + suffix(2))?.card.title == "Z")
     #expect(m.locate("abc123" + suffix(2, plus: 1))?.card.title == "Y")
+}
+
+@Test func revivedBoardKeepsOwnProject() throws {
+    let (base0, _) = try setup()
+    let base = edit(base0, by: dev, at: 0) { $0.ownProjects = [OwnProject(id: p, name: "P")] }
+    let a = try edit(base, by: dev, at: 1) { try $0.removeOwnProject(p, force: true) }
+    #expect(a.deleted["own:\(p.uuidString)"] != nil && a.deleted["board:\(p.uuidString)"] != nil)
+    var id = ""
+    let b = try edit(base, by: devB, at: 2) { id = try $0.addCard(project: p, title: "late", now: t + 2) }
+    for m in [merge(a, b), merge(b, a)] {
+        #expect(Catalog(ff: FFCore.Config(), file: m).orphanBoards.isEmpty)
+        #expect(m.ownProjects.map(\.name) == ["P"])
+        #expect(m.deleted["own:\(p.uuidString)"] == nil)
+        #expect(m.stamps["own:\(p.uuidString).name"] == base.stamps["own:\(p.uuidString).name"])
+        #expect(m.locate(id)?.card.title == "late")
+    }
+}
+
+@Test func removingColumnWithAtKeepsOtherColumnStamps() throws {
+    var f = BoardsFile(boards: [Board(project: p, columns: [
+        Column(name: "a"), Column(name: "a@b"), Column(name: "x"), Column(name: "Done")])])
+    f = f.stamped(from: BoardsFile(), by: dev, now: t)
+    var g = f
+    try g.removeColumn("a@b", project: p)
+    let s = g.stamped(from: f, by: dev, now: t + 1).stamps
+    let key = "column:\(p.uuidString)/a"
+    #expect(s[key + ".name"] != nil && s[key + ".order"] != nil)
+    #expect(s[key + "@b.name"] == nil)
+}
+
+@Test func subSecondCreatedIsSameCard() throws {
+    let (base, _) = try setup()
+    func add(_ created: Double, _ s: Double, _ d: Device) -> BoardsFile {
+        edit(base, by: d, at: s) {
+            $0.boards[0].columns[0].tasks.insert(Card(id: "abc123", title: "s", created: t + created), at: 0)
+        }
+    }
+    let m = merge(add(0.3, 1, dev), add(0.7, 2, devB))
+    #expect(titles(m, 0).sorted() == ["s", "x"])
+    #expect(m.locate("abc123")?.card.created == t + 0.3)
+}
+
+@Test func randomColumnIDSurvivesRoundTrip() throws {
+    let (base, _) = try setup()
+    var f = base
+    try f.addColumn("Review", project: p)
+    let id = try #require(f.boards[0].columns.first { $0.name == "Review" }).id
+    #expect(id != "review")
+    let store = try tempStore()
+    try store.save(f)
+    #expect(try store.load().boards[0].columns.first { $0.name == "Review" }?.id == id)
 }
