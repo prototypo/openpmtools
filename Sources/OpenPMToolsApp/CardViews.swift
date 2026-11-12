@@ -78,11 +78,13 @@ struct CardView: View {
         }
         .sheet(isPresented: $editing) {
             CardEditor(heading: "Edit Task", button: "Save",
-                       draft: CardDraft(title: card.title, notes: card.notes ?? "", due: card.due, priority: card.priority)) { d in
+                       draft: CardDraft(title: card.title, notes: card.notes ?? "", due: card.due, priority: card.priority, column: column),
+                       columns: columns) { d in
                 model.update {
                     try $0.editCard(card.id, title: d.title, notes: d.notes)
                     try $0.setDue(card.id, d.due)
                     try $0.setPriority(card.id, d.priority)
+                    if let to = d.column, to != column { try $0.moveCard(card.id, to: to) }
                 }
             }
         }
@@ -121,6 +123,7 @@ struct CardDraft {
     var due: Day?
     var priority: Priority?
     var project: UUID?
+    var column: String?
 }
 
 /// Title, notes, due date and priority for a new or existing card; a Project menu when `projects` is given.
@@ -132,6 +135,7 @@ struct CardEditor: View {
     let button: String
     @State var draft: CardDraft
     var projects: [ProjectEntry]? = nil
+    var columns: [String]? = nil
     let save: (CardDraft) -> Bool
     @State private var failure: String?
 
@@ -165,6 +169,11 @@ struct CardEditor: View {
             Picker("Priority", selection: $draft.priority) {
                 Text("None").tag(Priority?.none)
                 ForEach(Priority.allCases, id: \.self) { Text($0.label).tag(Optional($0)) }
+            }
+            if let columns {
+                Picker("Move to", selection: $draft.column) {
+                    ForEach(columns, id: \.self) { Text($0).tag(Optional($0)) }
+                }
             }
             if let failure {
                 Text(failure).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
