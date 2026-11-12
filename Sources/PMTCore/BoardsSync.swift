@@ -7,9 +7,6 @@ private let cardFields = ["title", "notes", "due", "priority", "place", "done", 
 /// that ever had the id. Its stamps stay under "card:<id>.<field>".
 private func cardItem(_ id: String, _ created: Date) -> String { "card:\(id)@\(Int(created.timeIntervalSince1970))" }
 
-/// A stamp with nothing in it (FFCore's memberwise init is internal), for a merge tick on an unstamped field.
-private let unstamped = try! JSONDecoder().decode(Stamp.self, from: Data(#"{"at":0,"by":"","clock":{}}"#.utf8))
-
 /// "<id>-<last 4 hex of created>", adding 1 until `taken` says no.
 private func freeID(_ id: String, _ created: Date, taken: (String) -> Bool) -> String {
     var n = Int(created.timeIntervalSince1970) & 0xffff
@@ -155,14 +152,16 @@ extension BoardsFile {
             if ca[id]!.card.created > cb[id]!.card.created { rename(&ca, &sa, beside: cb) } else { rename(&cb, &sb, beside: ca) }
         }
 
-        func restore(_ item: String, _ fields: [String], _ st: Stamps, tombs: [String]? = nil) {
+        // Every keep decision reads the tombstones as they were before any kept item cleared its own.
+        let tombstones = out.deleted
+        func restore(_ item: String, _ fields: [String], _ st: Stamps, tomb: String? = nil) {
             for f in fields { out.stamps[item + "." + f] = st[item + "." + f] }
-            for t in tombs ?? [item] { out.deleted[t] = nil }
+            out.deleted[tomb ?? item] = nil
         }
-        func keep(_ item: String, _ fields: [String], _ st: Stamps, tombs: [String]? = nil) -> Bool {
+        func keep(_ item: String, _ fields: [String], _ st: Stamps, tomb: String? = nil) -> Bool {
             let latest = fields.compactMap { st[item + "." + $0]?.at }.max() ?? -.infinity
-            if let d = (tombs ?? [item]).compactMap({ out.deleted[$0] }).max(), d > latest { return false }
-            restore(item, fields, st, tombs: tombs)
+            if let d = tombstones[tomb ?? item], d > latest { return false }
+            restore(item, fields, st, tomb: tomb)
             return true
         }
         func pick<T: Equatable>(_ key: String, _ x: T, _ y: T) -> T {
@@ -173,21 +172,21 @@ extension BoardsFile {
         /// An order that is neither side's value gets a merge tick, as `mergeText` does, so it wins when merged again.
         func settle(_ key: String, _ value: [String], _ picked: [String]) {
             guard value != picked else { return }
-            var st = out.stamps[key] ?? unstamped
+            var st = out.stamps[key] ?? Stamp(at: 0, by: "", clock: [:])
             st.clock["merge", default: 0] += 1
             out.stamps[key] = st
         }
         /// Items on both sides merge with `both` (given the key prefix "<kind>:<id>."); one-sided ones pass `keep`.
-        /// `tombs` names an item's tombstone keys when they are not its stamp key.
+        /// `tomb` names an item's tombstone key when it is not its stamp key.
         func items<T>(_ kind: String, _ fields: [String], _ x: [String: T], _ y: [String: T],
-                      tombs: (String, T) -> [String]? = { _, _ in nil }, both: (String, T, T) -> T) -> [String: T] {
+                      tomb: (String, T) -> String? = { _, _ in nil }, both: (String, T, T) -> T) -> [String: T] {
             var kept: [String: T] = [:]
             for id in Set(x.keys).union(y.keys) {
                 let k = kind + ":" + id
                 switch (x[id], y[id]) {
-                case let (v?, w?): kept[id] = both(k + ".", v, w); for t in tombs(id, v) ?? [k] { out.deleted[t] = nil }
-                case let (v?, nil) where keep(k, fields, sa, tombs: tombs(id, v)): kept[id] = v
-                case let (nil, w?) where keep(k, fields, sb, tombs: tombs(id, w)): kept[id] = w
+                case let (v?, w?): kept[id] = both(k + ".", v, w); out.deleted[tomb(id, v) ?? k] = nil
+                case let (v?, nil) where keep(k, fields, sa, tomb: tomb(id, v)): kept[id] = v
+                case let (nil, w?) where keep(k, fields, sb, tomb: tomb(id, w)): kept[id] = w
                 default: break
                 }
             }
@@ -206,14 +205,8 @@ extension BoardsFile {
         var seen = Set<UUID>()
         out.ownProjects = (first + second).compactMap { seen.insert($0.id).inserted ? own[$0.id.uuidString] : nil }
 
-        // A card's tombstones: its own, and those of the ids it was renamed from ("abc" for "abc-1f2e"),
-        // so deleting a card under its old id on a device that has not seen the rename still deletes it.
-        func cardTombs(_ id: String, _ p: Placed) -> [String] {
-            var ids = [Substring(id)]
-            while let dash = ids.last!.lastIndex(of: "-") { ids.append(ids.last![..<dash]) }
-            return ids.map { cardItem(String($0), p.card.created) }
-        }
-        let cards = items("card", cardFields, ca, cb, tombs: cardTombs) { k, x, y in
+        // A card tombstone names one card: its id and `created`.
+        let cards = items("card", cardFields, ca, cb, tomb: { cardItem($0, $1.card.created) }) { k, x, y in
             func text(_ f: String, _ a: String?, _ b: String?, _ j: TextJoin) -> String? {
                 let (v, s) = mergeText(a, sa[k + f], b, sb[k + f], join: j)
                 out.stamps[k + f] = s

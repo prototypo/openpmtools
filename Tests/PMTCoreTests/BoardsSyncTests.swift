@@ -374,9 +374,24 @@ private func suffix(_ s: Double, plus n: Int = 0) -> String {
     // B deletes Y under its old id before it sees the merge.
     let b2 = try edit(b, by: devB, at: 3) { try $0.deleteCard("abc123") }
     #expect(b2.deleted[tomb("abc123", t + 2)] != nil)
-    for x in [merge(m, b2), merge(a, b2)] {
-        #expect(x.locate("abc123")?.card.title == "X")
-        #expect(titles(x, 0).sorted() == ["X", "x"])
+    // X survives either way round; Y may come back (a delete under the old id does not name the renamed card).
+    for x in [merge(m, b2), merge(a, b2)] { #expect(x.locate("abc123")?.card.title == "X") }
+}
+
+@Test func inFileDuplicateDeleteKeepsOther() throws {
+    let (base0, _) = try setup()
+    // Several random ids, so differing hash orders would show up as differing results.
+    for _ in 0..<8 {
+        let id = String(UUID().uuidString.prefix(6)).lowercased()
+        let base = edit(base0, by: dev, at: 1) {
+            $0.boards[0].columns[0].tasks += [Card(id: id, title: "P", created: t + 1), Card(id: id, title: "Q", created: t + 1)]
+        }
+        let renamed = merge(base, base)
+        let a = try edit(renamed, by: dev, at: 2) { try $0.deleteCard(id) }
+        #expect(a.deleted[tomb(id, t + 1)] != nil)
+        for m in [merge(a, base), merge(a, renamed), merge(a, base0)] {
+            #expect(titles(m, 0).sorted() == ["Q", "x"])
+        }
     }
 }
 
