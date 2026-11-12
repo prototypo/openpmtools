@@ -8,6 +8,7 @@ public struct CardLocation: Hashable, Sendable {
     public var done: Date?
 }
 
+private func newColumnID() -> String { String(UUID().uuidString.prefix(8)).lowercased() }
 private func trimmed(_ s: String) -> String { s.trimmingCharacters(in: .whitespacesAndNewlines) }
 private func same(_ a: String, _ b: String) -> Bool { a.caseInsensitiveCompare(b) == .orderedSame }
 
@@ -64,7 +65,7 @@ extension BoardsFile {
         }
         if names.count < 2 { throw PMTError.tooFewColumns }
         if board(for: project) != nil { throw PMTError.boardExists }
-        boards.append(Board(project: project, columns: names.map { Column(name: $0) }))
+        boards.append(Board(project: project, columns: names.map { Column(name: $0, id: newColumnID()) }))
     }
 
     public mutating func deleteBoard(project: UUID, force: Bool) throws {
@@ -82,7 +83,7 @@ extension BoardsFile {
         if n.isEmpty { throw PMTError.emptyName }
         if boards[b].columns.contains(where: { same($0.name, n) }) { throw PMTError.duplicateColumn(n) }
         let working = boards[b].columns.count - 1
-        boards[b].columns.insert(Column(name: n), at: min(max(index ?? working, 0), working))
+        boards[b].columns.insert(Column(name: n, id: newColumnID()), at: min(max(index ?? working, 0), working))
     }
 
     public mutating func renameColumn(_ name: String, to new: String, project: UUID) throws {

@@ -39,9 +39,19 @@ public struct ArchivedCard: Codable, Hashable, Sendable {
 }
 
 public struct Column: Codable, Hashable, Sendable {
+    /// Stable across renames. Files written before ids existed get the name, so every device derives the same one.
+    public var id: String
     public var name: String
     public var tasks: [Card]
-    public init(name: String, tasks: [Card] = []) { self.name = name; self.tasks = tasks }
+    public init(name: String, tasks: [Card] = [], id: String? = nil) {
+        self.name = name; self.tasks = tasks
+        self.id = id ?? name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(name: try c.decode(String.self, forKey: .name), tasks: try c.decode([Card].self, forKey: .tasks),
+                  id: try c.decodeIfPresent(String.self, forKey: .id))
+    }
 }
 
 public struct Board: Codable, Hashable, Sendable {
