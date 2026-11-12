@@ -121,3 +121,37 @@ private func col(_ f: BoardsFile, _ i: Int) -> String { "column:\(p.uuidString)/
     let s = String(decoding: try BoardsFile().jsonData(), as: UTF8.self)
     #expect(!s.contains("stamps") && !s.contains("deleted"))
 }
+
+@Test func placeIncludesProject() throws {
+    // Two boards whose columns have the same name-derived id "doing".
+    let q = UUID()
+    var f = BoardsFile(boards: [
+        Board(project: p, columns: [Column(name: "Doing"), Column(name: "Done")]),
+        Board(project: q, columns: [Column(name: "Doing"), Column(name: "Done")])])
+    let id = try f.addCard(project: p, title: "x", now: t)
+    let before = f.stamped(from: BoardsFile(), by: dev, now: t)
+    var g = before
+    g.boards[1].columns[0].tasks = g.boards[0].columns[0].tasks
+    g.boards[0].columns[0].tasks = []
+    let s = g.stamped(from: before, by: dev, now: t + 1).stamps
+    #expect(s["card:\(id).place"]?.clock == ["A": 2])
+    #expect(s["card:\(id).title"] == before.stamps["card:\(id).title"])
+}
+
+@Test func attachBoardStampsCardPlaces() throws {
+    let (before, id) = try setup()
+    var f = before
+    try f.moveCard(id, to: "Doing")
+    let archived = try f.addCard(project: p, title: "y", now: t)
+    try f.moveCard(archived, to: "Done", now: t)
+    let base = f.stamped(from: before, by: dev, now: t + 1)
+    var g = base
+    let q = UUID()
+    try g.attachBoard(p, to: q)
+    let s = g.stamped(from: base, by: dev, now: t + 2).stamps
+    for c in [id, archived] {
+        #expect(s["card:\(c).place"] != base.stamps["card:\(c).place"], "\(c)")
+        #expect(s["card:\(c).place"]?.at == (t + 2).timeIntervalSince1970)
+        #expect(s["card:\(c).title"] == base.stamps["card:\(c).title"])
+    }
+}

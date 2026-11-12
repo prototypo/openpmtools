@@ -4,6 +4,7 @@ import FFCore
 extension BoardsFile {
     /// Every stamped field as key to value, and every item key (the tombstone key).
     /// Card ids are unique across the file, so card keys use the id alone.
+    /// A card's place is "<project>/<column id>" or "<project>/archive": old column ids repeat across boards.
     /// Optionals are wrapped in `AnyHashable` so a nil value is still a field.
     private var syncFields: (values: [String: AnyHashable], items: Set<String>) {
         var v: [String: AnyHashable] = [:], items = Set<String>()
@@ -33,9 +34,9 @@ extension BoardsFile {
                 items.insert(k)
                 v[k + ".name"] = col.name
                 v[k + ".order"] = col.tasks.map(\.id)
-                for c in col.tasks { card(c, place: col.id, done: nil, from: nil) }
+                for c in col.tasks { card(c, place: "\(b.project.uuidString)/\(col.id)", done: nil, from: nil) }
             }
-            for a in b.archive { card(a.card, place: "archive", done: a.done, from: a.fromColumn) }
+            for a in b.archive { card(a.card, place: "\(b.project.uuidString)/archive", done: a.done, from: a.fromColumn) }
         }
         return (v, items)
     }
