@@ -155,3 +155,29 @@ private func col(_ f: BoardsFile, _ i: Int) -> String { "column:\(p.uuidString)/
         #expect(s["card:\(c).title"] == base.stamps["card:\(c).title"])
     }
 }
+
+@Test func recreatedBoardClearsTombstone() throws {
+    let (before, _) = try setup()
+    var f = before
+    try f.deleteBoard(project: p, force: true)
+    let gone = f.stamped(from: before, by: dev, now: t + 1)
+    var g = gone
+    try g.createBoard(project: p, columns: ["A", "Done"])
+    let back = g.stamped(from: gone, by: dev, now: t + 2)
+    #expect(back.deleted["board:\(p.uuidString)"] == nil)
+    let later = back.stamped(from: back, by: dev, now: t + 91 * 86400)
+    #expect(later.stamps["board:\(p.uuidString).columns"] != nil)
+    #expect(later.stamps[col(later, 0) + ".name"] != nil)
+}
+
+@Test func removingColumnKeepsDottedSibling() throws {
+    var f = BoardsFile(boards: [Board(project: p, columns: [
+        Column(name: "v1"), Column(name: "v1.0"), Column(name: "x"), Column(name: "Done")])])
+    f = f.stamped(from: BoardsFile(), by: dev, now: t)
+    var g = f
+    try g.removeColumn("v1", project: p)
+    let s = g.stamped(from: f, by: dev, now: t + 1).stamps
+    let key = "column:\(p.uuidString)/v1"
+    #expect(s[key + ".name"] == nil)
+    #expect(s[key + ".0.name"] != nil && s[key + ".0.order"] != nil)
+}

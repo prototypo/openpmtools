@@ -49,14 +49,27 @@ extension BoardsFile {
         for (k, value) in new.values where old.values[k] != value {
             out.stamps[k] = out.stamps[k]?.bumped(by: device, now: now) ?? .first(by: device, now: now)
         }
+        // Exact keys, not a prefix: old column ids come from names and can contain dots.
+        func unstamp(_ item: String) {
+            let fields: [String]
+            switch item.prefix(while: { $0 != ":" }) {
+            case "card": fields = ["title", "notes", "due", "priority", "place", "done", "fromColumn"]
+            case "column": fields = ["name", "order"]
+            case "board": fields = ["columns"]
+            default: fields = ["name"]  // own
+            }
+            for f in fields { out.stamps[item + "." + f] = nil }
+        }
         for k in old.items.subtracting(new.items) {
             out.deleted[k] = now.timeIntervalSince1970
-            out.stamps = out.stamps.filter { !$0.key.hasPrefix(k + ".") }
+            unstamp(k)
         }
+        // A re-created item must not keep its old tombstone, or pruning would strip its live stamps.
+        for k in new.items { out.deleted[k] = nil }
         let cutoff = now.timeIntervalSince1970 - 90 * 86400
         for (k, t) in out.deleted where t < cutoff {
             out.deleted[k] = nil
-            out.stamps = out.stamps.filter { !$0.key.hasPrefix(k + ".") }
+            unstamp(k)
         }
         return out
     }
