@@ -3,16 +3,30 @@ import FFCore
 
 private let cardFields = ["title", "notes", "due", "priority", "place", "done", "fromColumn"]
 
+/// A card's item (tombstone) key: "card:<id>@<created seconds>", so a delete names one card, not every card
+/// that ever had the id. Its stamps stay under "card:<id>.<field>".
+private func cardItem(_ id: String, _ created: Date) -> String { "card:\(id)@\(Int(created.timeIntervalSince1970))" }
+
+/// A stamp with nothing in it (FFCore's memberwise init is internal), for a merge tick on an unstamped field.
+private let unstamped = try! JSONDecoder().decode(Stamp.self, from: Data(#"{"at":0,"by":"","clock":{}}"#.utf8))
+
+/// "<id>-<last 4 hex of created>", adding 1 until `taken` says no.
+private func freeID(_ id: String, _ created: Date, taken: (String) -> Bool) -> String {
+    var n = Int(created.timeIntervalSince1970) & 0xffff
+    while taken(id + String(format: "-%04x", n)) { n += 1 }
+    return id + String(format: "-%04x", n)
+}
+
 extension BoardsFile {
     /// Every stamped field as key to value, and every item key (the tombstone key).
-    /// Card ids are unique across the file, so card keys use the id alone.
+    /// Card ids are unique across the file, so card stamp keys use the id alone; card item keys add `created`.
     /// A card's place is "<project>/<column id>" or "<project>/archive": old column ids repeat across boards.
     /// Optionals are wrapped in `AnyHashable` so a nil value is still a field.
     private var syncFields: (values: [String: AnyHashable], items: Set<String>) {
         var v: [String: AnyHashable] = [:], items = Set<String>()
         func card(_ c: Card, place: String, done: Date?, from: String?) {
             let k = "card:\(c.id)"
-            items.insert(k)
+            items.insert(cardItem(c.id, c.created))
             v[k + ".title"] = c.title
             v[k + ".notes"] = AnyHashable(c.notes)
             v[k + ".due"] = AnyHashable(c.due)
@@ -52,7 +66,11 @@ extension BoardsFile {
             out.stamps[k] = out.stamps[k]?.bumped(by: device, now: now) ?? .first(by: device, now: now)
         }
         // Exact keys, not a prefix: old column ids come from names and can contain dots.
+        let liveCards = Set(new.items.filter { $0.hasPrefix("card:") }.map { $0.prefix { $0 != "@" } })
         func unstamp(_ item: String) {
+            // A card's stamps are keyed by id alone: a live card with the same id keeps them.
+            let item = String(item.prefix { $0 != "@" })
+            if liveCards.contains(Substring(item)) { return }
             let fields: [String]
             switch item.prefix(while: { $0 != ":" }) {
             case "card": fields = cardFields
@@ -85,15 +103,23 @@ private struct Placed {
 }
 
 extension BoardsFile {
+    /// Cards by id. A duplicate id in the file is renamed like a merge collision, so neither card is lost:
+    /// the earlier `created` (then the smaller title, then the first in the file) keeps the id.
     private var placed: [String: Placed] {
+        let all = boards.flatMap { b in
+            b.columns.flatMap { col in col.tasks.map { Placed(card: $0, board: b.project, column: col.id) } }
+                + b.archive.map { Placed(card: $0.card, board: b.project, column: nil, done: $0.done, from: $0.fromColumn) }
+        }
+        let ids = Set(all.map(\.card.id))
         var out: [String: Placed] = [:]
-        for b in boards {
-            for col in b.columns {
-                for c in col.tasks { out[c.id] = out[c.id] ?? Placed(card: c, board: b.project, column: col.id) }
+        for var p in all {
+            if let q = out[p.card.id] {
+                var (keeper, loser) = (q.card.created, q.card.title) > (p.card.created, p.card.title) ? (p, q) : (q, p)
+                out[keeper.card.id] = keeper
+                loser.card.id = freeID(loser.card.id, loser.card.created) { ids.contains($0) || out[$0] != nil }
+                p = loser
             }
-            for a in b.archive {
-                out[a.id] = out[a.id] ?? Placed(card: a.card, board: b.project, column: nil, done: a.done, from: a.fromColumn)
-            }
+            out[p.card.id] = p
         }
         return out
     }
@@ -120,26 +146,23 @@ extension BoardsFile {
         for id in Set(ca.keys).intersection(cb.keys).sorted() where ca[id]!.card.created != cb[id]!.card.created {
             func rename(_ cards: inout [String: Placed], _ st: inout Stamps, beside others: [String: Placed]) {
                 var c = cards.removeValue(forKey: id)!
-                var n = Int(c.card.created.timeIntervalSince1970) & 0xffff
-                func taken(_ k: String) -> Bool {
+                c.card.id = freeID(id, c.card.created) { k in
                     cards[k] != nil || others[k].map { $0.card.created != c.card.created } ?? false
                 }
-                while taken(id + String(format: "-%04x", n)) { n += 1 }
-                c.card.id = id + String(format: "-%04x", n)
                 cards[c.card.id] = c
                 for f in cardFields { st["card:\(c.card.id).\(f)"] = st.removeValue(forKey: "card:\(id).\(f)") }
             }
             if ca[id]!.card.created > cb[id]!.card.created { rename(&ca, &sa, beside: cb) } else { rename(&cb, &sb, beside: ca) }
         }
 
-        func restore(_ item: String, _ fields: [String], _ st: Stamps) {
+        func restore(_ item: String, _ fields: [String], _ st: Stamps, tombs: [String]? = nil) {
             for f in fields { out.stamps[item + "." + f] = st[item + "." + f] }
-            out.deleted[item] = nil
+            for t in tombs ?? [item] { out.deleted[t] = nil }
         }
-        func keep(_ item: String, _ fields: [String], _ st: Stamps) -> Bool {
+        func keep(_ item: String, _ fields: [String], _ st: Stamps, tombs: [String]? = nil) -> Bool {
             let latest = fields.compactMap { st[item + "." + $0]?.at }.max() ?? -.infinity
-            if let d = out.deleted[item], d > latest { return false }
-            restore(item, fields, st)
+            if let d = (tombs ?? [item]).compactMap({ out.deleted[$0] }).max(), d > latest { return false }
+            restore(item, fields, st, tombs: tombs)
             return true
         }
         func pick<T: Equatable>(_ key: String, _ x: T, _ y: T) -> T {
@@ -147,16 +170,24 @@ extension BoardsFile {
             out.stamps[key] = s
             return v
         }
+        /// An order that is neither side's value gets a merge tick, as `mergeText` does, so it wins when merged again.
+        func settle(_ key: String, _ value: [String], _ picked: [String]) {
+            guard value != picked else { return }
+            var st = out.stamps[key] ?? unstamped
+            st.clock["merge", default: 0] += 1
+            out.stamps[key] = st
+        }
         /// Items on both sides merge with `both` (given the key prefix "<kind>:<id>."); one-sided ones pass `keep`.
+        /// `tombs` names an item's tombstone keys when they are not its stamp key.
         func items<T>(_ kind: String, _ fields: [String], _ x: [String: T], _ y: [String: T],
-                      both: (String, T, T) -> T) -> [String: T] {
+                      tombs: (String, T) -> [String]? = { _, _ in nil }, both: (String, T, T) -> T) -> [String: T] {
             var kept: [String: T] = [:]
             for id in Set(x.keys).union(y.keys) {
                 let k = kind + ":" + id
                 switch (x[id], y[id]) {
-                case let (v?, w?): kept[id] = both(k + ".", v, w); out.deleted[k] = nil
-                case let (v?, nil) where keep(k, fields, sa): kept[id] = v
-                case let (nil, w?) where keep(k, fields, sb): kept[id] = w
+                case let (v?, w?): kept[id] = both(k + ".", v, w); for t in tombs(id, v) ?? [k] { out.deleted[t] = nil }
+                case let (v?, nil) where keep(k, fields, sa, tombs: tombs(id, v)): kept[id] = v
+                case let (nil, w?) where keep(k, fields, sb, tombs: tombs(id, w)): kept[id] = w
                 default: break
                 }
             }
@@ -175,7 +206,14 @@ extension BoardsFile {
         var seen = Set<UUID>()
         out.ownProjects = (first + second).compactMap { seen.insert($0.id).inserted ? own[$0.id.uuidString] : nil }
 
-        let cards = items("card", cardFields, ca, cb) { k, x, y in
+        // A card's tombstones: its own, and those of the ids it was renamed from ("abc" for "abc-1f2e"),
+        // so deleting a card under its old id on a device that has not seen the rename still deletes it.
+        func cardTombs(_ id: String, _ p: Placed) -> [String] {
+            var ids = [Substring(id)]
+            while let dash = ids.last!.lastIndex(of: "-") { ids.append(ids.last![..<dash]) }
+            return ids.map { cardItem(String($0), p.card.created) }
+        }
+        let cards = items("card", cardFields, ca, cb, tombs: cardTombs) { k, x, y in
             func text(_ f: String, _ a: String?, _ b: String?, _ j: TextJoin) -> String? {
                 let (v, s) = mergeText(a, sa[k + f], b, sb[k + f], join: j)
                 out.stamps[k + f] = s
@@ -236,11 +274,12 @@ extension BoardsFile {
         for p in built.keys {
             for i in built[p]!.columns.indices {
                 let k = p + "/" + built[p]!.columns[i].id
-                let here = into[k] ?? [], order = columns[k]!.order
+                var here = Dictionary((into[k] ?? []).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+                // Each card once, even if the order names an id twice (a duplicate renamed by `placed`).
+                let known = columns[k]!.order.compactMap { here.removeValue(forKey: $0) }
                 // Cards not in the winning order are new here: newest first, at the top.
-                let extra = here.filter { !order.contains($0.id) }
-                    .sorted { $0.created != $1.created ? $0.created > $1.created : $0.id < $1.id }
-                built[p]!.columns[i].tasks = extra + order.compactMap { id in here.first { $0.id == id } }
+                let extra = here.values.sorted { $0.created != $1.created ? $0.created > $1.created : $0.id < $1.id }
+                built[p]!.columns[i].tasks = extra + known
             }
             built[p]!.archive.sort { ($0.done, $0.id) < ($1.done, $1.id) }
             // Same name twice: the column whose id sorts first takes the other's cards at its top.
@@ -255,6 +294,8 @@ extension BoardsFile {
                 kept.tasks = twins.filter { $0.id != c.id }.flatMap(\.tasks) + c.tasks
                 return kept
             }
+            for c in built[p]!.columns { settle("column:\(p)/\(c.id).order", c.tasks.map(\.id), columns[p + "/" + c.id]!.order) }
+            settle("board:\(p).columns", built[p]!.columns.map(\.id), lists[p]!)
         }
 
         // Boards have no order stamp: the side whose own order wins, then by project id.

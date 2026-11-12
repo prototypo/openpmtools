@@ -16,6 +16,9 @@ private func setup() throws -> (BoardsFile, String) {
     return (f.stamped(from: BoardsFile(), by: dev, now: t), id)
 }
 
+/// A card's tombstone key; `setup`'s card was created at `t`.
+private func tomb(_ id: String, _ created: Date = t) -> String { "card:\(id)@\(Int(created.timeIntervalSince1970))" }
+
 private func col(_ f: BoardsFile, _ i: Int) -> String { "column:\(p.uuidString)/\(f.boards[0].columns[i].id)" }
 
 @Test func moveStampsPlaceOnly() throws {
@@ -56,7 +59,7 @@ private func col(_ f: BoardsFile, _ i: Int) -> String { "column:\(p.uuidString)/
     var f = before
     try f.deleteCard(id)
     let out = f.stamped(from: before, by: dev, now: t + 1)
-    #expect(out.deleted["card:\(id)"] == (t + 1).timeIntervalSince1970)
+    #expect(out.deleted[tomb(id)] == (t + 1).timeIntervalSince1970)
     #expect(!out.stamps.keys.contains { $0.hasPrefix("card:\(id).") })
 }
 
@@ -77,7 +80,7 @@ private func col(_ f: BoardsFile, _ i: Int) -> String { "column:\(p.uuidString)/
     try f.deleteBoard(project: p, force: true)
     let out = f.stamped(from: before, by: dev, now: t + 1)
     #expect(out.deleted["board:\(p.uuidString)"] != nil)
-    #expect(out.deleted["card:\(id)"] != nil)
+    #expect(out.deleted[tomb(id)] != nil)
     #expect(out.stamps.isEmpty)
 }
 
@@ -96,7 +99,7 @@ private func col(_ f: BoardsFile, _ i: Int) -> String { "column:\(p.uuidString)/
     try f.deleteCard(id)
     f = f.stamped(from: before, by: dev, now: t)
     let later = f.stamped(from: f, by: dev, now: t + 91 * 86400)
-    #expect(later.deleted["card:\(id)"] == nil)
+    #expect(later.deleted[tomb(id)] == nil)
 }
 
 @Test func storeUpdateStamps() throws {
@@ -350,4 +353,60 @@ private func diverged() throws -> (BoardsFile, BoardsFile) {
     #expect(m.boards[0].columns.map(\.name) == ["To Do", "Working", "Review", "Done"])
     #expect(m.boards[0].archive.map(\.title) == ["second"])
     #expect(m.boards[0].columns[2].tasks.first?.notes?.contains("— Also edited on Mac B") == true)
+}
+
+/// `base` with a card "abc123" made at t + s by `d`.
+private func withABC(_ base: BoardsFile, _ title: String, _ s: Double, _ d: Device) -> BoardsFile {
+    edit(base, by: d, at: s) {
+        $0.boards[0].columns[0].tasks.insert(Card(id: "abc123", title: title, created: t + s), at: 0)
+    }
+}
+
+private func suffix(_ s: Double, plus n: Int = 0) -> String {
+    String(format: "-%04x", (Int((t + s).timeIntervalSince1970) & 0xffff) + n)
+}
+
+@Test func collisionThenDeleteKeepsOtherCard() throws {
+    let (base, _) = try setup()
+    let a = withABC(base, "X", 1, dev), b = withABC(base, "Y", 2, devB)
+    let m = merge(a, b)
+    #expect(m.locate("abc123" + suffix(2))?.card.title == "Y")
+    // B deletes Y under its old id before it sees the merge.
+    let b2 = try edit(b, by: devB, at: 3) { try $0.deleteCard("abc123") }
+    #expect(b2.deleted[tomb("abc123", t + 2)] != nil)
+    for x in [merge(m, b2), merge(a, b2)] {
+        #expect(x.locate("abc123")?.card.title == "X")
+        #expect(titles(x, 0).sorted() == ["X", "x"])
+    }
+}
+
+@Test func duplicateIDInOneFileKeepsBoth() throws {
+    let (base, _) = try setup()
+    var f = base
+    f.boards[0].columns[0].tasks += [Card(id: "dup", title: "second", created: t + 2),
+                                     Card(id: "dup", title: "first", created: t + 1)]
+    for m in [merge(f, base), merge(f, f)] {
+        #expect(m.locate("dup")?.card.title == "first")
+        #expect(m.locate("dup" + suffix(2))?.card.title == "second")
+        #expect(titles(m, 0).count == 3)
+    }
+}
+
+@Test func tombstoneTieKeepsCard() throws {
+    let (base, id) = try setup()
+    let a = try edit(base, by: dev, at: 1) { try $0.editCard(id, title: "y") }
+    let b = try edit(base, by: devB, at: 1) { try $0.deleteCard(id) }
+    #expect(b.deleted[tomb(id)] == a.stamps["card:\(id).title"]?.at)
+    #expect(titles(merge(a, b), 0) == ["y"])
+}
+
+@Test func collisionSuffixSkipsUsedID() throws {
+    let (base, _) = try setup()
+    let a = edit(withABC(base, "X", 1, dev), by: dev, at: 5) {
+        $0.boards[0].columns[0].tasks.insert(Card(id: "abc123" + suffix(2), title: "Z", created: t + 5), at: 0)
+    }
+    let m = merge(a, withABC(base, "Y", 2, devB))
+    #expect(m.locate("abc123")?.card.title == "X")
+    #expect(m.locate("abc123" + suffix(2))?.card.title == "Z")
+    #expect(m.locate("abc123" + suffix(2, plus: 1))?.card.title == "Y")
 }
