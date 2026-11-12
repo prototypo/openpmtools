@@ -292,3 +292,14 @@ git commit -m "Add Move to column choice to the task editor"
 
 - **Part 2, after the developer account and the iCloud spike:** split per-Mac fields into `local.json`, move the shared files to the iCloud folder, run `merged(with:)` on iCloud conflict versions (or switch to per-device files), point the backup script and watchers at the new folder.
 - **Part 3:** the iOS/iPadOS app.
+
+## Carry into Part 2 (from part 1 execution)
+
+- Divider text is now `— Also edited on <by>, <yyyy-MM-dd HH:mm> UTC —` (UTC, for determinism).
+- When saving a merged result, stamp against the merge result, never against the local pre-merge file.
+- The one-time migration merges ALL Macs' unstamped copies before the first stamped save (a joined unstamped text beats a later unstamped copy).
+- Every app and CLI must be a stamping build before sync is turned on: older builds strip `stamps`, `deleted` and column ids on save, which resets version vectors. Consider a `formatVersion` key.
+- Tie the device id to the hardware UUID, so a Migration Assistant / Time Machine copy of `device.json` gets a new id.
+- `Device.load` first-run race (two processes at once) can make two ids; harmless, but `.withoutOverwriting` would close it.
+- Consider making the non-stamping `BoardsStore.save(_:)` / `ConfigStore.save(_:)` internal.
+- Accepted: in a rare id-collision race, a deleted card can come back (never lost).
