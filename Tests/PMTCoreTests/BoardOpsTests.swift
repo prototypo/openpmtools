@@ -224,3 +224,26 @@ private func ids(_ f: BoardsFile, _ col: Int, board: UUID = p) -> [String] { f.b
     let a = try f.addCard(project: p, title: "A", due: today, priority: .low)  // set Low, shows High (due today)
     #expect(try f.dropCard(a, to: "To Do", onto: target, below: false, today: today).priorityChanged == false)
 }
+
+@Test func oldColumnsGetNameIDs() throws {
+    let json = Data(#"{"name":" Doing ","tasks":[]}"#.utf8)
+    let a = try JSONDecoder().decode(Column.self, from: json)
+    let b = try JSONDecoder().decode(Column.self, from: json)
+    #expect(a.id == "doing" && a.id == b.id)
+}
+
+@Test func newColumnsGetRandomIDs() throws {
+    var f = BoardsFile(); try f.createBoard(project: p, columns: ["To Do", "Done"])
+    try f.addColumn("A", project: p); try f.addColumn("B", project: p)
+    let cols = f.board(for: p)!.columns
+    #expect(cols.allSatisfy { $0.id.count == 8 && $0.id == $0.id.lowercased() })
+    #expect(Set(cols.map(\.id)).count == cols.count)
+    #expect(cols.map(\.id) != ["to do", "a", "b", "done"])
+}
+
+@Test func renameKeepsColumnID() throws {
+    var f = BoardsFile(); try f.createBoard(project: p, columns: ["To Do", "Done"])
+    let id = f.board(for: p)!.columns[0].id
+    try f.renameColumn("To Do", to: "Backlog", project: p)
+    #expect(f.board(for: p)!.columns[0].id == id)
+}
